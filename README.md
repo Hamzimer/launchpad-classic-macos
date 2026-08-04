@@ -36,9 +36,9 @@ A native SwiftUI application launcher that brings the classic macOS Launchpad ex
 
 ## Install
 
-1. Download `LaunchpadClassic-3.10.zip` from the [latest release](../../releases/latest).
+1. Download `LaunchpadClassic-3.10.1.zip` from the [latest release](../../releases/latest).
 2. Extract the ZIP archive.
-3. Move `LaunchpadClassic-3.10.app` to `/Applications`.
+3. Move `LaunchpadClassic-3.10.1.app` to `/Applications`.
 4. Open the application.
 
 The downloadable build is locally signed. If macOS blocks the first launch, Control-click the application in Finder, choose **Open**, and confirm once.
@@ -94,7 +94,7 @@ Launchpad Classicは、従来のmacOS Launchpadに近い操作感を、現在の
 
 ### インストール
 
-1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.10.zip`をダウンロードします。
+1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.10.1.zip`をダウンロードします。
 2. ZIPを展開し、APPを「アプリケーション」フォルダーへ移動します。
 3. APPを起動します。
 
