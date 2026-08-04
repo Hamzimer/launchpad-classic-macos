@@ -1076,6 +1076,7 @@ extension View {
         interactive: Bool = false,
         tint: Color? = nil
     ) -> some View {
+#if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             glassEffect(
                 .regular.tint(tint).interactive(interactive),
@@ -1085,5 +1086,9 @@ extension View {
             background(.ultraThinMaterial, in: shape)
                 .overlay(shape.stroke(Color.white.opacity(0.18), lineWidth: 0.7))
         }
+#else
+        background(.ultraThinMaterial, in: shape)
+            .overlay(shape.stroke(Color.white.opacity(0.18), lineWidth: 0.7))
+#endif
     }
 }
