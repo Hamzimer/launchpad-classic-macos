@@ -1,0 +1,1089 @@
+import SwiftUI
+import AppKit
+
+struct ContentView: View {
+    @EnvironmentObject var model: LauncherModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                LaunchpadBackground(size: geometry.size)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+                Color.clear
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.dismissLauncher() }
+                ScrollWheelMonitor { model.navigateVisiblePages(by: $0) }
+                VStack(spacing: 0) {
+                    searchField.padding(.top, 34)
+                    PagedAppGrid()
+                }
+                if let group = model.group(for: model.openGroupID) {
+                    FolderOverlay(group: group).transition(
+                        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96))
+                    )
+                }
+                if model.pageCount > 1 {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        LaunchpadPageIndicator(
+                            pageCount: model.pageCount,
+                            currentPage: min(model.currentPage, model.pageCount - 1),
+                            onSelect: { model.goToPage($0) }
+                        )
+                        .padding(.bottom, 26)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(model.openGroupID == nil)
+                    .zIndex(100)
+                }
+            }
+            .onAppear { model.applyReferenceDefaultIconSize(pageWidth: geometry.size.width) }
+            .onChange(of: geometry.size.width) { _, width in
+                model.applyReferenceDefaultIconSize(pageWidth: width)
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(!model.isDismissing)
+        .foregroundStyle(model.background == "light" ? Color.black : Color.white)
+        .sheet(isPresented: $model.showSettings) { SettingsView().environmentObject(model) }
+        .confirmationDialog(model.text("Delete this application?", "このアプリケーションを削除しますか？"),
+            isPresented: Binding(get: { model.pendingDeleteApp != nil }, set: { if !$0 { model.pendingDeleteApp = nil } })) {
+            Button(model.text("Move to Trash", "ゴミ箱に入れる"), role: .destructive) { model.deletePendingApplication() }
+            Button(model.text("Cancel", "キャンセル"), role: .cancel) { model.pendingDeleteApp = nil }
+        }
+        .alert(
+            model.text("Operation Failed", "操作に失敗しました"),
+            isPresented: Binding(
+                get: { model.errorMessage != nil },
+                set: { if !$0 { model.clearError() } }
+            )
+        ) {
+            Button("OK") { model.clearError() }
+        } message: {
+            Text(model.errorMessage ?? model.text("An unknown error occurred.", "不明なエラーが発生しました。"))
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: model.openGroupID)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.38), value: model.background)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 0.24),
+            value: model.selectedBackgroundImage != nil
+        )
+        .onAppear { model.maximizeLauncherWindow() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.maximizeLauncherWindow()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            model.handleApplicationDidResignActive()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didHideNotification)) { _ in
+            model.handleApplicationDidHide()
+        }
+        .onExitCommand {
+            if model.openGroupID != nil { model.closeFolder() } else { model.dismissLauncher() }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(model.text("Search", "検索"), text: $model.search)
+                .textFieldStyle(.plain).frame(width: 210)
+            if !model.search.isEmpty {
+                Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .accessibilityLabel(model.text("Clear Search", "検索を消去"))
+            }
+            LauncherSettingsMenu()
+        }
+        .padding(.leading, 12).padding(.trailing, 6).frame(height: 34)
+        .launchpadGlass(in: Capsule(), interactive: true)
+    }
+}
+
+struct LauncherSettingsMenu: View {
+    @EnvironmentObject var model: LauncherModel
+
+    var body: some View {
+        Menu {
+            Button {
+                model.showSettings = true
+            } label: {
+                Label(model.text("Settings…", "設定…"), systemImage: "gearshape")
+            }
+
+            Menu {
+                sizeButton(72, en: "Small", ja: "小")
+                sizeButton(92, en: "Medium", ja: "中")
+                sizeButton(112, en: "Large", ja: "大")
+                Divider()
+                Button(model.text("Smaller", "小さくする")) { model.adjustIconSize(by: -4) }
+                Button(model.text("Larger", "大きくする")) { model.adjustIconSize(by: 4) }
+            } label: {
+                Label(model.text("Display", "表示"), systemImage: "rectangle.grid.3x2")
+            }
+
+            Menu {
+                backgroundButton("wallpaper", en: "Current Desktop Wallpaper", ja: "現在のデスクトップ壁紙")
+                Divider()
+                backgroundButton("aurora", en: "Aurora", ja: "オーロラ")
+                backgroundButton("ocean", en: "Ocean", ja: "オーシャン")
+                backgroundButton("dark", en: "Dark", ja: "ダーク")
+                backgroundButton("light", en: "Light", ja: "ライト")
+                if !model.wallpapers.isEmpty {
+                    Divider()
+                    Menu(model.text("macOS Wallpapers", "macOS壁紙")) {
+                        ForEach(model.wallpapers) { wallpaper in
+                            let value = "file:" + wallpaper.url.path
+                            Button(selectionTitle(wallpaper.name, selected: model.background == value)) {
+                                model.background = value
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(model.text("Background", "背景"), systemImage: "photo")
+            }
+
+            Divider()
+            Button {
+                model.scan()
+            } label: {
+                Label(
+                    model.isScanning ? model.text("Updating…", "更新中…") : model.text("Update App List", "アプリ一覧を更新"),
+                    systemImage: "arrow.clockwise"
+                )
+            }
+            .disabled(model.isScanning)
+
+            Divider()
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Label(model.text("Quit Launchpad Classic", "Launchpad Classicを終了"), systemImage: "power")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .contentShape(Circle())
+                .accessibilityLabel(model.text("Launcher Settings", "Launcher設定"))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private func sizeButton(_ size: Double, en: String, ja: String) -> some View {
+        Button(selectionTitle(model.text(en, ja), selected: model.iconSize == size)) {
+            model.setIconSize(size)
+        }
+    }
+
+    @ViewBuilder
+    private func backgroundButton(_ value: String, en: String, ja: String) -> some View {
+        Button(selectionTitle(model.text(en, ja), selected: model.background == value)) {
+            model.background = value
+        }
+    }
+
+    private func selectionTitle(_ title: String, selected: Bool) -> String {
+        title + (selected ? " ✓" : "")
+    }
+}
+
+struct PagedAppGrid: View {
+    @EnvironmentObject var model: LauncherModel
+
+    var body: some View {
+        GeometryReader { geometry in
+            let allEntries = model.rootEntries
+            let metrics = RootGridMetrics.calculate(
+                containerWidth: geometry.size.width,
+                containerHeight: geometry.size.height,
+                preferredIconSize: model.iconSize
+            )
+            let pageCount = max(1, Int(ceil(Double(allEntries.count) / Double(metrics.capacity))))
+
+            ZStack {
+                RootPagerCanvas(
+                    allEntries: allEntries,
+                    pageCount: pageCount,
+                    pageSize: metrics.capacity,
+                    metrics: metrics
+                )
+                if allEntries.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: model.search.isEmpty ? "square.grid.3x3" : "magnifyingglass")
+                            .font(.system(size: 32, weight: .light))
+                        Text(model.search.isEmpty
+                            ? model.text("No Applications Found", "アプリケーションが見つかりません")
+                            : model.text("No Results", "検索結果がありません"))
+                            .font(.headline)
+                        if !model.search.isEmpty {
+                            Text(model.text("Try a different search.", "別のキーワードで検索してください。"))
+                                .font(.subheadline)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 70)
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .onAppear { model.setPageCount(pageCount) }
+            .onChange(of: pageCount) { _, count in model.setPageCount(count) }
+        }
+    }
+}
+
+struct RootPagerCanvas: View {
+    @EnvironmentObject var model: LauncherModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragOffset: CGFloat = 0
+    let allEntries: [LauncherEntry]
+    let pageCount: Int
+    let pageSize: Int
+    let metrics: RootGridMetrics
+
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: RootGridMetrics.columnSpacing),
+            count: metrics.columnCount
+        )
+    }
+
+    var body: some View {
+        GeometryReader { pagerGeometry in
+            let pageWidth = max(1, pagerGeometry.size.width)
+            let pageHeight = max(1, pagerGeometry.size.height)
+
+            ZStack(alignment: .leading) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(pageDragGesture(pageWidth: pageWidth))
+                    .simultaneousGesture(
+                        TapGesture().onEnded { model.dismissLauncher() }
+                    )
+
+                ForEach(
+                    LaunchpadPageMotion.visiblePages(
+                        currentPage: model.currentPage,
+                        pageCount: pageCount
+                    ),
+                    id: \.self
+                ) { page in
+                    LazyVGrid(columns: columns, alignment: .center, spacing: RootGridMetrics.rowSpacing) {
+                        ForEach(entries(on: page)) { entry in
+                            EntryTile(entry: entry, iconSize: metrics.iconSize)
+                        }
+                    }
+                    .padding(.horizontal, metrics.horizontalPadding)
+                    .padding(.top, metrics.topInset)
+                    .frame(width: pageWidth, height: pageHeight, alignment: .top)
+                    .animation(
+                        reduceMotion ? nil : .easeInOut(duration: 0.24),
+                        value: Array(entries(on: page)).map(\.id)
+                    )
+                    .offset(
+                        x: CGFloat(page - min(model.currentPage, pageCount - 1)) * pageWidth
+                            + dragOffset
+                    )
+                    .allowsHitTesting(page == model.currentPage)
+                    .compositingGroup()
+                    .transition(.identity)
+                }
+            }
+            .clipped()
+        }
+    }
+
+    private func entries(on page: Int) -> ArraySlice<LauncherEntry> {
+        let start = min(page * pageSize, allEntries.count)
+        let end = min(start + pageSize, allEntries.count)
+        return allEntries[start..<end]
+    }
+
+    private func pageDragGesture(pageWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .updating($dragOffset) { value, offset, transaction in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical) else { return }
+                let isPastFirstPage = model.currentPage == 0 && horizontal > 0
+                let isPastLastPage = model.currentPage == pageCount - 1 && horizontal < 0
+                let resistance: CGFloat = (isPastFirstPage || isPastLastPage) ? 0.22 : 1
+                let limit = pageWidth * 0.42
+                transaction.disablesAnimations = true
+                offset = min(max(horizontal * resistance, -limit), limit)
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                let projected = value.predictedEndTranslation.width
+                let animationVelocity = LaunchpadPageMotion.normalizedInitialVelocity(
+                    translation: horizontal,
+                    projectedTranslation: projected,
+                    pageWidth: pageWidth
+                )
+                guard abs(horizontal) > abs(vertical) else { return }
+
+                let threshold = max(72, pageWidth * LaunchpadPageMotion.pageDecisionRatio)
+                guard abs(horizontal) >= threshold || abs(projected) >= threshold else { return }
+
+                let directionSource = abs(projected) >= abs(horizontal) ? projected : horizontal
+                let pageDelta = directionSource < 0 ? 1 : -1
+                model.changePage(by: pageDelta, initialVelocity: animationVelocity)
+            }
+    }
+}
+
+struct LaunchpadPageIndicator: View {
+    @EnvironmentObject var model: LauncherModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let pageCount: Int
+    let currentPage: Int
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<max(0, pageCount), id: \.self) { page in
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(page == currentPage ? 1 : 0.4))
+                        .frame(
+                            width: page == currentPage ? 10 : 8,
+                            height: page == currentPage ? 10 : 8
+                        )
+                        .shadow(color: .black.opacity(0.38), radius: 1.5, y: 1)
+                }
+                .frame(width: 24, height: 26)
+                .contentShape(Rectangle())
+                .onTapGesture { onSelect(page) }
+                .accessibilityLabel(model.text(
+                    "Page \(page + 1) of \(pageCount)",
+                    "\(pageCount)ページ中\(page + 1)ページ"
+                ))
+                .accessibilityAddTraits(page == currentPage ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(.horizontal, 7)
+        .frame(height: 26)
+        .launchpadGlass(in: Capsule(), interactive: true)
+        .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+        .animation(reduceMotion ? nil : LaunchpadPageMotion.animation(), value: currentPage)
+    }
+}
+
+struct EntryTile: View {
+    @EnvironmentObject var model: LauncherModel
+    let entry: LauncherEntry
+    let iconSize: Double
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 14).contentShape(Rectangle())
+                .dropDestination(for: String.self) { items, _ in
+                    return reorder(items, after: false)
+                }
+            VStack(spacing: 0) {
+                switch entry {
+                case .app(let app):
+                    AppIcon(app: app, size: iconSize)
+                case .group(let group):
+                    FolderIcon(group: group, size: iconSize)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                switch entry {
+                case .app(let app): model.launch(app)
+                case .group(let group): model.open(group)
+                }
+            }
+            .draggable(entry.id)
+            .dropDestination(for: String.self) { items, _ in
+                guard let sourceID = items.first else { return false }
+                model.handleDrop(sourceID, on: entry)
+                return true
+            }
+            .contextMenu {
+                if case .app(let app) = entry, app.isDeletable {
+                    Button(model.text("Delete Application…", "アプリケーションを削除…"), role: .destructive) {
+                        model.pendingDeleteApp = app
+                    }
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(accessibilityHint)
+            .accessibilityAddTraits(.isButton)
+            Color.clear.frame(width: 14).contentShape(Rectangle())
+                .dropDestination(for: String.self) { items, _ in
+                    return reorder(items, after: true)
+                }
+        }
+    }
+
+    private func reorder(_ items: [String], after: Bool) -> Bool {
+        guard let sourceID = items.first else { return false }
+        model.reorder(sourceID, beside: entry.id, after: after)
+        return true
+    }
+
+    private var accessibilityLabel: String {
+        switch entry {
+        case .app(let app): app.name
+        case .group(let group): group.name
+        }
+    }
+
+    private var accessibilityHint: String {
+        switch entry {
+        case .app:
+            model.text("Opens the application", "アプリケーションを開きます")
+        case .group:
+            model.text("Opens the folder", "フォルダを開きます")
+        }
+    }
+}
+
+struct AppIcon: View {
+    let app: AppItem; let size: Double
+    var body: some View {
+        VStack(spacing: 7) {
+            ApplicationArtwork(app: app, size: size)
+                .shadow(color: .black.opacity(0.32), radius: 7, y: 4)
+            Text(app.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                .shadow(color: .black.opacity(0.7), radius: 2, y: 1).frame(maxWidth: size + 48)
+        }.contentShape(Rectangle())
+    }
+}
+
+struct FolderIcon: View {
+    @EnvironmentObject var model: LauncherModel
+    let group: AppGroup; let size: Double
+    private var preview: [AppItem] { Array(model.apps(in: group).prefix(9)) }
+    var body: some View {
+        VStack(spacing: 7) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3), spacing: 3) {
+                ForEach(preview) { app in
+                    ApplicationArtwork(app: app, size: max(12, (size - 22) / 3))
+                }
+            }
+            .padding(8).frame(width: size, height: size)
+            .launchpadGlass(
+                in: RoundedRectangle(cornerRadius: size * 0.22),
+                interactive: true
+            )
+            .shadow(color: .black.opacity(0.3), radius: 7, y: 4)
+            Text(group.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+        }.contentShape(Rectangle())
+    }
+}
+
+struct ApplicationArtwork: View {
+    @EnvironmentObject var model: LauncherModel
+    let app: AppItem
+    let size: Double
+    @StateObject private var state = ApplicationArtworkState()
+
+    var body: some View {
+        Group {
+            if state.representedAppID == app.id, let icon = state.icon {
+                Image(nsImage: icon).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: max(4, size * 0.2))
+                    .fill(.thinMaterial)
+                    .overlay {
+                        Image(systemName: "app.dashed")
+                            .font(.system(size: max(10, size * 0.36), weight: .light))
+                            .foregroundStyle(.secondary)
+                    }
+            }
+        }
+        .frame(width: size, height: size)
+        .task(id: app.id) {
+            guard state.prepareToLoad(appID: app.id) else { return }
+            let loadedIcon = await model.loadIcon(for: app)
+            guard !Task.isCancelled else { return }
+            state.finishLoading(loadedIcon, appID: app.id)
+        }
+    }
+}
+
+@MainActor
+final class ApplicationArtworkState: ObservableObject {
+    @Published private(set) var icon: NSImage?
+    @Published private(set) var representedAppID: String?
+
+    func prepareToLoad(appID: String) -> Bool {
+        if representedAppID == appID, icon != nil { return false }
+        representedAppID = appID
+        icon = nil
+        return true
+    }
+
+    func finishLoading(_ icon: NSImage, appID: String) {
+        guard representedAppID == appID else { return }
+        self.icon = icon
+    }
+}
+
+struct FolderOverlay: View {
+    @EnvironmentObject var model: LauncherModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let group: AppGroup
+    var body: some View {
+        GeometryReader { geometry in
+            let folderApps = model.apps(in: group)
+            let metrics = FolderGridMetrics.calculate(
+                containerWidth: geometry.size.width,
+                containerHeight: geometry.size.height,
+                iconSize: model.iconSize,
+                itemCount: folderApps.count
+            )
+            let capacity = metrics.capacity
+            let pageCount = metrics.pageCount
+            let availablePanelWidth = max(360, geometry.size.width - 48)
+            let panelWidth = min(availablePanelWidth, max(560, CGFloat(metrics.gridWidth) + 140))
+            let columnSpacing: CGFloat = 20
+            let columns = Array(
+                repeating: GridItem(.fixed(CGFloat(metrics.cellWidth)), spacing: columnSpacing, alignment: .top),
+                count: metrics.columnCount
+            )
+
+            ZStack {
+                Color.black.opacity(0.34).ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.closeFolder() }
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let sourceID = items.first else { return false }
+                        model.moveOutOfOpenGroup(sourceID)
+                        return true
+                    }
+                VStack(spacing: 12) {
+                    FolderTitleEditor(groupID: group.id, initialName: group.name)
+
+                    FolderPagerCanvas(
+                        group: group,
+                        folderApps: folderApps,
+                        capacity: capacity,
+                        pageCount: pageCount,
+                        columns: columns,
+                        gridWidth: CGFloat(metrics.gridWidth),
+                        pageWidth: panelWidth
+                    )
+                    .frame(height: CGFloat(metrics.gridHeight), alignment: .top)
+                    .clipped()
+
+                    if pageCount > 1 {
+                        LaunchpadPageIndicator(
+                            pageCount: pageCount,
+                            currentPage: min(model.folderPage, pageCount - 1),
+                            onSelect: { model.goToFolderPage($0) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 70).padding(.vertical, 18)
+                .frame(width: panelWidth)
+                .frame(height: CGFloat(metrics.panelHeight), alignment: .top)
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .launchpadGlass(
+                    in: RoundedRectangle(cornerRadius: 28, style: .continuous),
+                    tint: .white.opacity(0.035)
+                )
+                .dropDestination(for: String.self) { items, _ in
+                    guard let sourceID = items.first else { return false }
+                    model.addToOpenGroup(sourceID)
+                    return true
+                }
+                .animation(
+                    reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.87),
+                    value: group.appPaths
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+            .onAppear { model.setFolderPageCount(pageCount) }
+            .onChange(of: pageCount) { _, count in model.setFolderPageCount(count) }
+        }
+    }
+}
+
+struct FolderTitleEditor: View {
+    @EnvironmentObject var model: LauncherModel
+    let groupID: UUID
+    let initialName: String
+    @StateObject private var renameCoordinator = FolderRenamePanelCoordinator()
+
+    var body: some View {
+        Button {
+            renameCoordinator.present(
+                groupID: groupID,
+                currentName: currentName,
+                model: model
+            )
+        } label: {
+            HStack(spacing: 8) {
+                Text(currentName)
+                    .font(.system(size: 24, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "pencil.circle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(renameCoordinator.isPresenting)
+        .accessibilityLabel(model.text("Rename Folder", "フォルダ名を変更"))
+        .accessibilityHint(model.text(
+            "Opens the folder name dialog",
+            "フォルダ名の変更画面を開きます"
+        ))
+        .padding(.horizontal, 12)
+        .frame(width: 420, height: 42)
+        .background(.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var currentName: String {
+        model.group(for: groupID)?.name ?? initialName
+    }
+
+}
+
+final class FolderRenamePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+@MainActor
+final class FolderRenamePanelCoordinator: NSObject, ObservableObject, NSWindowDelegate {
+    @Published private(set) var isPresenting = false
+    private(set) var activePanel: FolderRenamePanel?
+    private(set) var activeTextField: NSTextField?
+    private weak var parentWindow: NSWindow?
+    private weak var model: LauncherModel?
+    private var groupID: UUID?
+
+    func present(
+        groupID: UUID,
+        currentName: String,
+        model: LauncherModel,
+        parentWindow: NSWindow? = nil
+    ) {
+        if let activePanel {
+            NSApp.activate()
+            activePanel.makeKeyAndOrderFront(nil)
+            focusNameField()
+            return
+        }
+        guard model.group(for: groupID) != nil else {
+            model.errorMessage = model.text(
+                "This folder no longer exists.",
+                "このフォルダは存在しません。"
+            )
+            return
+        }
+
+        let resolvedParent = parentWindow
+            ?? NSApp.keyWindow
+            ?? NSApp.windows.first(where: { $0.isVisible && !($0 is FolderRenamePanel) })
+        let panel = makePanel(currentName: currentName, model: model)
+        self.parentWindow = resolvedParent
+        self.model = model
+        self.groupID = groupID
+        activePanel = panel
+        isPresenting = true
+
+        if let resolvedParent {
+            resolvedParent.addChildWindow(panel, ordered: .above)
+            let origin = NSPoint(
+                x: resolvedParent.frame.midX - panel.frame.width / 2,
+                y: resolvedParent.frame.midY - panel.frame.height / 2
+            )
+            panel.setFrameOrigin(origin)
+        } else {
+            panel.center()
+        }
+
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+        focusNameField()
+    }
+
+    @objc func saveRename() {
+        guard let groupID, let model, let activeTextField else {
+            dismissPanel()
+            return
+        }
+        _ = Self.applyRename(groupID: groupID, name: activeTextField.stringValue, model: model)
+        dismissPanel()
+    }
+
+    @objc func cancelRename() {
+        dismissPanel()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closingWindow = notification.object as? NSWindow,
+              closingWindow === activePanel else { return }
+        parentWindow?.removeChildWindow(closingWindow)
+        clearSession()
+    }
+
+    @discardableResult
+    static func applyRename(groupID: UUID, name: String, model: LauncherModel) -> Bool {
+        guard model.group(for: groupID) != nil else { return false }
+        model.renameGroup(groupID, to: name)
+        model.finalizeGroupName(groupID)
+        return model.group(for: groupID)?.name != nil
+    }
+
+    private func makePanel(currentName: String, model: LauncherModel) -> FolderRenamePanel {
+        let panel = FolderRenamePanel(
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 190),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = model.text("Rename Folder", "フォルダ名を変更")
+        panel.level = .modalPanel
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .utilityWindow
+        panel.collectionBehavior = [.fullScreenAuxiliary]
+        panel.delegate = self
+
+        let titleLabel = NSTextField(labelWithString: model.text("Folder Name", "フォルダ名"))
+        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+
+        let descriptionLabel = NSTextField(labelWithString: model.text(
+            "Enter a new name, then select Save.",
+            "新しい名前を入力して「保存」を選択してください。"
+        ))
+        descriptionLabel.font = .systemFont(ofSize: 13)
+        descriptionLabel.textColor = .secondaryLabelColor
+
+        let textField = NSTextField(string: currentName)
+        textField.font = .systemFont(ofSize: 16, weight: .medium)
+        textField.usesSingleLineMode = true
+        textField.maximumNumberOfLines = 1
+        textField.lineBreakMode = .byTruncatingTail
+        textField.placeholderString = model.text("Folder Name", "フォルダ名")
+        textField.setAccessibilityLabel(model.text("Folder Name", "フォルダ名"))
+        activeTextField = textField
+
+        let cancelButton = NSButton(
+            title: model.text("Cancel", "キャンセル"),
+            target: self,
+            action: #selector(cancelRename)
+        )
+        cancelButton.keyEquivalent = "\u{1b}"
+        let saveButton = NSButton(
+            title: model.text("Save", "保存"),
+            target: self,
+            action: #selector(saveRename)
+        )
+        saveButton.keyEquivalent = "\r"
+        saveButton.bezelStyle = .rounded
+
+        let buttonStack = NSStackView(views: [cancelButton, saveButton])
+        buttonStack.orientation = .horizontal
+        buttonStack.alignment = .centerY
+        buttonStack.spacing = 10
+
+        let contentView = NSView()
+        panel.contentView = contentView
+        for view in [titleLabel, descriptionLabel, textField, buttonStack] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 26),
+            descriptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            descriptionLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            descriptionLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -26),
+            textField.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 16),
+            textField.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            textField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -26),
+            textField.heightAnchor.constraint(equalToConstant: 28),
+            buttonStack.topAnchor.constraint(equalTo: textField.bottomAnchor, constant: 18),
+            buttonStack.trailingAnchor.constraint(equalTo: textField.trailingAnchor),
+            buttonStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -18)
+        ])
+        panel.initialFirstResponder = textField
+        return panel
+    }
+
+    private func focusNameField() {
+        guard let activePanel, let activeTextField else { return }
+        if activePanel.makeFirstResponder(activeTextField) {
+            activeTextField.selectText(nil)
+            return
+        }
+        Task { @MainActor [weak activePanel, weak activeTextField] in
+            await Task.yield()
+            guard let activePanel, let activeTextField else { return }
+            if activePanel.makeFirstResponder(activeTextField) {
+                activeTextField.selectText(nil)
+            }
+        }
+    }
+
+    private func dismissPanel() {
+        guard let activePanel else {
+            clearSession()
+            return
+        }
+        activePanel.delegate = nil
+        parentWindow?.removeChildWindow(activePanel)
+        activePanel.orderOut(nil)
+        activePanel.close()
+        clearSession()
+    }
+
+    private func clearSession() {
+        activePanel = nil
+        activeTextField = nil
+        parentWindow = nil
+        model = nil
+        groupID = nil
+        isPresenting = false
+    }
+}
+
+struct FolderPagerCanvas: View {
+    @EnvironmentObject var model: LauncherModel
+    @GestureState private var dragOffset: CGFloat = 0
+    let group: AppGroup
+    let folderApps: [AppItem]
+    let capacity: Int
+    let pageCount: Int
+    let columns: [GridItem]
+    let gridWidth: CGFloat
+    let pageWidth: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(pageDragGesture)
+
+            ForEach(
+                LaunchpadPageMotion.visiblePages(
+                    currentPage: model.folderPage,
+                    pageCount: pageCount
+                ),
+                id: \.self
+            ) { page in
+                FolderAppGrid(
+                    group: group,
+                    apps: Array(apps(on: page)),
+                    columns: columns,
+                    gridWidth: gridWidth
+                )
+                .offset(
+                    x: CGFloat(page - min(model.folderPage, pageCount - 1)) * pageWidth
+                        + dragOffset
+                )
+                .allowsHitTesting(page == model.folderPage)
+                .compositingGroup()
+                .transition(.identity)
+            }
+        }
+    }
+
+    private var pageDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .updating($dragOffset) { value, offset, transaction in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical) else { return }
+                let isPastFirstPage = model.folderPage == 0 && horizontal > 0
+                let isPastLastPage = model.folderPage == pageCount - 1 && horizontal < 0
+                let resistance: CGFloat = (isPastFirstPage || isPastLastPage) ? 0.22 : 1
+                let limit = pageWidth * 0.42
+                transaction.disablesAnimations = true
+                offset = min(max(horizontal * resistance, -limit), limit)
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                let projected = value.predictedEndTranslation.width
+                guard abs(horizontal) > abs(vertical),
+                      abs(horizontal) >= 42 || abs(projected) >= 110 else { return }
+                let directionSource = abs(projected) >= abs(horizontal) ? projected : horizontal
+                let animationVelocity = LaunchpadPageMotion.normalizedInitialVelocity(
+                    translation: horizontal,
+                    projectedTranslation: projected,
+                    pageWidth: pageWidth
+                )
+                model.goToFolderPage(
+                    model.folderPage + (directionSource < 0 ? 1 : -1),
+                    initialVelocity: animationVelocity
+                )
+            }
+    }
+
+    private func apps(on page: Int) -> ArraySlice<AppItem> {
+        let start = min(page * capacity, folderApps.count)
+        let end = min(start + capacity, folderApps.count)
+        return folderApps[start..<end]
+    }
+}
+
+struct FolderAppGrid: View {
+    @EnvironmentObject var model: LauncherModel
+    let group: AppGroup
+    let apps: [AppItem]
+    let columns: [GridItem]
+    let gridWidth: CGFloat
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
+            ForEach(apps) { app in
+                FolderAppTile(group: group, app: app)
+            }
+        }
+        .frame(width: gridWidth, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+struct FolderAppTile: View {
+    @EnvironmentObject var model: LauncherModel
+    let group: AppGroup
+    let app: AppItem
+
+    var body: some View {
+        AppIcon(app: app, size: model.iconSize)
+            .contentShape(Rectangle())
+            .onTapGesture { model.launch(app) }
+            .draggable(app.id)
+            .dropDestination(for: String.self) { items, _ in
+                guard let sourceID = items.first else { return false }
+                model.reorderInOpenGroup(sourceID, before: app.id)
+                return true
+            }
+            .contextMenu {
+                Button(model.text("Remove from Folder", "フォルダから取り出す")) {
+                    model.remove(app, from: group)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(app.name)
+            .accessibilityHint(model.text("Opens the application", "アプリケーションを開きます"))
+            .accessibilityAddTraits(.isButton)
+    }
+}
+
+struct LaunchpadBackground: View {
+    @EnvironmentObject var model: LauncherModel
+    let size: CGSize
+
+    var body: some View {
+        let width = max(1, size.width)
+        let height = max(1, size.height)
+
+        ZStack {
+            Color(red: 0.10, green: 0.08, blue: 0.28)
+                .frame(width: width + 8, height: height + 8)
+            fallbackGradient
+                .frame(width: width + 8, height: height + 8)
+            Group {
+                if (model.background.hasPrefix("file:") || model.background == "wallpaper"),
+                   let image = model.selectedBackgroundImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                        .scaleEffect(1.08)
+                        .blur(radius: 26)
+                        .overlay(Color.black.opacity(0.25))
+                } else if model.background == "light" {
+                    Color(nsColor: .windowBackgroundColor)
+                } else if model.background == "dark" {
+                    Color(red: 0.04, green: 0.045, blue: 0.07)
+                } else if model.background == "ocean" {
+                    LinearGradient(
+                        colors: [.blue, .cyan.opacity(0.6), .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                } else if model.background == "aurora" {
+                    LinearGradient(
+                        colors: [Color(red: 0.19, green: 0.08, blue: 0.35), .indigo, .teal.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                } else {
+                    fallbackGradient
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .clipped()
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private var fallbackGradient: some View {
+        LinearGradient(
+            colors: [.indigo, .purple, .blue],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var model: LauncherModel
+    @Environment(\.dismiss) var dismiss
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack { Text(model.text("Settings", "設定")).font(.title2.bold()); Spacer(); Button(model.text("Done", "完了")) { dismiss() } }
+            Form {
+                Picker(model.text("Language", "言語"), selection: $model.language) {
+                    Text(model.text("System", "システム")).tag("system")
+                    Text("English").tag("en")
+                    Text("日本語").tag("ja")
+                }
+                HStack { Text(model.text("Display size", "表示サイズ")); Slider(value: $model.iconSize, in: 64...112, step: 4); Text("\(Int(model.iconSize))") }
+                HStack {
+                    Button(model.text("Update App List", "アプリ一覧を更新")) { model.scan() }
+                        .disabled(model.isScanning)
+                    if model.isScanning {
+                        ProgressView().controlSize(.small)
+                        Text(model.text("Updating…", "更新中…")).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }.padding(28).frame(width: 560, height: 270)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func launchpadGlass<S: Shape>(
+        in shape: S,
+        interactive: Bool = false,
+        tint: Color? = nil
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            glassEffect(
+                .regular.tint(tint).interactive(interactive),
+                in: shape
+            )
+        } else {
+            background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(Color.white.opacity(0.18), lineWidth: 0.7))
+        }
+    }
+}

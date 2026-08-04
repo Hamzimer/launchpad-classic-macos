@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Local release output
+dist/
+*.app
+*.zip
+*.dSYM
+
+# Editors
+.vscode/
+.idea/
+*~
