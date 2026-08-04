@@ -507,7 +507,10 @@ struct LauncherQualityTests {
 
     private static func imageLoadersHandleMissingFiles() async throws {
         let missingApp = URL(fileURLWithPath: "/tmp/launcherx-missing-\(UUID().uuidString).app")
-        let icon = await LauncherIconLoader().icon(for: missingApp)
+        guard let missingIconData = await LauncherIconLoader().iconData(for: missingApp),
+              let icon = NSImage(data: missingIconData) else {
+            throw QualityTestFailure(description: "Missing app path did not return safe icon data")
+        }
         try require(icon.size.width > 0 && icon.size.height > 0, "Missing app path did not return a safe placeholder icon")
         try require(icon.size == NSSize(width: 512, height: 512), "The app icon was not normalized for stable rendering")
 
@@ -538,7 +541,10 @@ struct LauncherQualityTests {
             to: resources.appendingPathComponent("AppIcon.png"),
             options: .atomic
         )
-        let bundleIcon = await LauncherIconLoader().icon(for: fakeApp)
+        guard let bundleIconData = await LauncherIconLoader().iconData(for: fakeApp),
+              let bundleIcon = NSImage(data: bundleIconData) else {
+            throw QualityTestFailure(description: "The bundle icon data could not be decoded")
+        }
         try require(
             bundleIcon.size == NSSize(width: 512, height: 512),
             "A bundle icon was not normalized for stable rendering"
@@ -558,8 +564,25 @@ struct LauncherQualityTests {
         )
 
         let missingWallpaper = URL(fileURLWithPath: "/tmp/launcherx-missing-\(UUID().uuidString).png")
-        let image = await LauncherBackgroundImageLoader().image(for: missingWallpaper)
+        let image = await LauncherBackgroundImageLoader().imageData(for: missingWallpaper)
         try require(image == nil, "Missing wallpaper unexpectedly produced an image")
+
+        let wallpaperURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("launcherx-wallpaper-\(UUID().uuidString).png")
+        try testIconData.write(to: wallpaperURL, options: .atomic)
+        defer {
+            do {
+                try FileManager.default.removeItem(at: wallpaperURL)
+            } catch {
+                FileHandle.standardError.write(
+                    Data("Could not remove test wallpaper: \(error.localizedDescription)\n".utf8)
+                )
+            }
+        }
+        guard let wallpaperData = await LauncherBackgroundImageLoader().imageData(for: wallpaperURL),
+              wallpaperData.makeImage() != nil else {
+            throw QualityTestFailure(description: "Background image data could not be reconstructed on MainActor")
+        }
     }
 
     private static func makeTestIconData() -> Data? {

@@ -265,6 +265,12 @@ struct RootGridMetrics: Equatable, Sendable {
     private let fileOperator = LauncherFileOperator()
     private let iconLoader = LauncherIconLoader()
     private let backgroundImageLoader = LauncherBackgroundImageLoader()
+    private let iconImageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 96
+        cache.totalCostLimit = 64 * 1_024 * 1_024
+        return cache
+    }()
     private var applicationScanTask: Task<Void, Never>?
     private var wallpaperScanTask: Task<Void, Never>?
     private var deleteTask: Task<Void, Never>?
@@ -338,7 +344,14 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func loadIcon(for app: AppItem) async -> NSImage {
-        await iconLoader.icon(for: app.url)
+        let key = app.url.standardizedFileURL.path as NSString
+        if let cached = iconImageCache.object(forKey: key) { return cached }
+        let iconData = await iconLoader.iconData(for: app.url)
+        let icon = iconData.flatMap(NSImage.init(data:))
+            ?? NSWorkspace.shared.icon(forFile: app.url.path)
+        icon.size = NSSize(width: 512, height: 512)
+        iconImageCache.setObject(icon, forKey: key, cost: 512 * 512 * 4)
+        return icon
     }
 
     func scan() {
@@ -805,11 +818,11 @@ struct RootGridMetrics: Equatable, Sendable {
         selectedBackgroundImage = nil
         let loader = backgroundImageLoader
         backgroundLoadTask = Task { [weak self] in
-            let image = await loader.image(for: imageURL)
+            let imageData = await loader.imageData(for: imageURL)
             guard !Task.isCancelled, let self, self.requestedBackgroundPath == path else { return }
             self.backgroundLoadTask = nil
-            self.selectedBackgroundImage = image
-            if image == nil { self.requestedBackgroundPath = nil }
+            self.selectedBackgroundImage = imageData?.makeImage()
+            if imageData == nil { self.requestedBackgroundPath = nil }
         }
     }
     private func saveOrder() { defaults.set(Self.sanitizedOrder(rootOrder), forKey: orderKey) }

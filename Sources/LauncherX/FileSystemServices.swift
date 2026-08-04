@@ -140,28 +140,28 @@ actor LauncherFileOperator {
 
 actor LauncherIconLoader {
     private static let renderedPixelSize = 512
-    private let cache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
+    private let cache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
         cache.countLimit = 96
         cache.totalCostLimit = 64 * 1_024 * 1_024
         return cache
     }()
 
-    func icon(for url: URL) -> NSImage {
+    func iconData(for url: URL) -> Data? {
         let standardizedURL = url.standardizedFileURL
         let key = standardizedURL.path as NSString
-        if let cached = cache.object(forKey: key) { return cached }
-        let icon: NSImage
+        if let cached = cache.object(forKey: key) { return cached as Data }
+        let iconData: Data?
         if let bundleIcon = Self.bundleIcon(for: standardizedURL),
-           let normalizedBundleIcon = Self.normalizedIcon(bundleIcon) {
-            icon = normalizedBundleIcon
+           let normalizedBundleIconData = Self.normalizedIconData(bundleIcon) {
+            iconData = normalizedBundleIconData
         } else {
             let workspaceIcon = NSWorkspace.shared.icon(forFile: standardizedURL.path)
-            icon = Self.normalizedIcon(workspaceIcon) ?? workspaceIcon
+            iconData = Self.normalizedIconData(workspaceIcon)
         }
-        let pixelSize = Self.renderedPixelSize
-        cache.setObject(icon, forKey: key, cost: pixelSize * pixelSize * 4)
-        return icon
+        guard !Task.isCancelled, let iconData else { return nil }
+        cache.setObject(iconData as NSData, forKey: key, cost: iconData.count)
+        return iconData
     }
 
     private nonisolated static func bundleIcon(for appURL: URL) -> NSImage? {
@@ -230,7 +230,7 @@ actor LauncherIconLoader {
         return trimmed
     }
 
-    private nonisolated static func normalizedIcon(_ source: NSImage) -> NSImage? {
+    private nonisolated static func normalizedIconData(_ source: NSImage) -> Data? {
         var proposedRect = NSRect(
             x: 0,
             y: 0,
@@ -261,25 +261,61 @@ actor LauncherIconLoader {
         guard let renderedImage = context.makeImage() else { return nil }
         guard let pixelData = renderedImage.dataProvider?.data,
               (pixelData as Data).contains(where: { $0 != 0 }) else { return nil }
+        return NSBitmapImageRep(cgImage: renderedImage).representation(
+            using: .png,
+            properties: [:]
+        )
+    }
+}
+
+struct LauncherDecodedImage: Sendable {
+    let pixels: Data
+    let width: Int
+    let height: Int
+    let bytesPerRow: Int
+
+    var memoryCost: Int { pixels.count }
+
+    @MainActor
+    func makeImage() -> NSImage? {
+        guard width > 0,
+              height > 0,
+              bytesPerRow == width * 4,
+              pixels.count == bytesPerRow * height,
+              let provider = CGDataProvider(data: pixels as CFData),
+              let cgImage = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(
+                    rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
+                ),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: true,
+                intent: .defaultIntent
+              ) else { return nil }
         return NSImage(
-            cgImage: renderedImage,
-            size: NSSize(width: renderedPixelSize, height: renderedPixelSize)
+            cgImage: cgImage,
+            size: NSSize(width: width, height: height)
         )
     }
 }
 
 actor LauncherBackgroundImageLoader {
-    private let cache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 8
-        cache.totalCostLimit = 256 * 1_024 * 1_024
-        return cache
-    }()
+    private static let maximumCachedImages = 8
+    private static let maximumCacheCost = 256 * 1_024 * 1_024
+    private var cache: [String: LauncherDecodedImage] = [:]
+    private var cacheOrder: [String] = []
+    private var cacheCost = 0
 
-    func image(for url: URL) -> NSImage? {
+    func imageData(for url: URL) -> LauncherDecodedImage? {
         let standardizedURL = url.standardizedFileURL
-        let key = standardizedURL.path as NSString
-        if let cached = cache.object(forKey: key) { return cached }
+        let key = standardizedURL.path
+        if let cached = cachedImage(forKey: key) { return cached }
         guard !Task.isCancelled,
               standardizedURL.isFileURL,
               FileManager.default.isReadableFile(atPath: standardizedURL.path) else { return nil }
@@ -290,22 +326,79 @@ actor LauncherBackgroundImageLoader {
             kCGImageSourceThumbnailMaxPixelSize: 4_096,
             kCGImageSourceShouldCacheImmediately: true
         ]
-        let decodedImage: NSImage?
-        let decodedCost: Int
-        if let source = CGImageSourceCreateWithURL(standardizedURL as CFURL, nil),
-           let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
-            decodedImage = NSImage(
-                cgImage: cgImage,
-                size: NSSize(width: cgImage.width, height: cgImage.height)
-            )
-            decodedCost = cgImage.width * cgImage.height * 4
-        } else {
-            decodedImage = NSImage(contentsOf: standardizedURL)
-            decodedCost = 16 * 1_024 * 1_024
-        }
-
-        guard !Task.isCancelled, let decodedImage else { return nil }
-        cache.setObject(decodedImage, forKey: key, cost: decodedCost)
+        guard let source = CGImageSourceCreateWithURL(standardizedURL as CFURL, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+              ),
+              !Task.isCancelled,
+              let decodedImage = Self.rgbaImage(from: cgImage),
+              !Task.isCancelled else { return nil }
+        store(decodedImage, forKey: key)
         return decodedImage
+    }
+
+    private func cachedImage(forKey key: String) -> LauncherDecodedImage? {
+        guard let image = cache[key] else { return nil }
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+        return image
+    }
+
+    private func store(_ image: LauncherDecodedImage, forKey key: String) {
+        guard image.memoryCost <= Self.maximumCacheCost else { return }
+        if let existing = cache.removeValue(forKey: key) {
+            cacheCost -= existing.memoryCost
+        }
+        cacheOrder.removeAll { $0 == key }
+        while (cache.count >= Self.maximumCachedImages
+            || cacheCost + image.memoryCost > Self.maximumCacheCost),
+            let oldestKey = cacheOrder.first {
+            cacheOrder.removeFirst()
+            if let removed = cache.removeValue(forKey: oldestKey) {
+                cacheCost -= removed.memoryCost
+            }
+        }
+        cache[key] = image
+        cacheOrder.append(key)
+        cacheCost += image.memoryCost
+    }
+
+    private nonisolated static func rgbaImage(from source: CGImage) -> LauncherDecodedImage? {
+        let width = source.width
+        let height = source.height
+        let rowCalculation = width.multipliedReportingOverflow(by: 4)
+        guard width > 0,
+              height > 0,
+              !rowCalculation.overflow else { return nil }
+        let bytesPerRow = rowCalculation.partialValue
+        let sizeCalculation = bytesPerRow.multipliedReportingOverflow(by: height)
+        guard !sizeCalculation.overflow,
+              sizeCalculation.partialValue <= maximumCacheCost else { return nil }
+
+        var pixels = Data(count: sizeCalculation.partialValue)
+        let didRender = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let baseAddress = buffer.baseAddress,
+                  let context = CGContext(
+                    data: baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else { return false }
+            context.interpolationQuality = .high
+            context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard didRender else { return nil }
+        return LauncherDecodedImage(
+            pixels: pixels,
+            width: width,
+            height: height,
+            bytesPerRow: bytesPerRow
+        )
     }
 }
