@@ -13,6 +13,7 @@ struct LauncherQualityTests {
     static func main() async {
         do {
             try invalidSavedPreferencesAreSanitized()
+            try searchFiltersApplicationsAndResetsPaging()
             try duplicateSavedGroupsAndPathsAreSanitized()
             try duplicateRuntimeOrderDoesNotCrashOrLoseEntries()
             try dropInputValidationRejectsUnknownIdentifiers()
@@ -21,6 +22,7 @@ struct LauncherQualityTests {
             try folderRemovalMatchesNativeLifecycle()
             try pageNavigationHandlesIntegerBoundaries()
             try modalUIBlocksBackgroundPageNavigation()
+            try launcherWindowAcceptsKeyboardFocus()
             try dismissMotionMatchesReferenceApplication()
             try referenceIconSizingMatchesAttachedApp()
             try rootGridUsesAvailableScreenSpace()
@@ -29,7 +31,7 @@ struct LauncherQualityTests {
             try scannerGracefullyHandlesMissingRoots()
             try await imageLoadersHandleMissingFiles()
             try await fileOperatorRejectsUnsafeDeleteLocation()
-            print("Launcher quality tests passed (17/17)")
+            print("Launcher quality tests passed (19/19)")
         } catch {
             FileHandle.standardError.write(Data("Launcher quality tests failed: \(error)\n".utf8))
             Darwin.exit(EXIT_FAILURE)
@@ -50,10 +52,31 @@ struct LauncherQualityTests {
         ], forKey: "launcher.order.v1")
 
         let model = LauncherModel(defaults: context.defaults, autoScan: false)
-        try require(model.language == "system", "Invalid language was not sanitized")
+        try require(model.language == "en", "Invalid language did not fall back to English")
         try require(model.iconSize == 92, "Non-finite icon size was not sanitized")
         try require(model.background == "wallpaper", "Invalid background was not sanitized")
         try require(model.rootOrder == ["app:/Applications/Alpha.app"], "Invalid root order was not sanitized")
+    }
+
+    private static func searchFiltersApplicationsAndResetsPaging() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+        let alpha = AppItem(url: URL(fileURLWithPath: "/Applications/Alpha Notes.app"))
+        let beta = AppItem(url: URL(fileURLWithPath: "/Applications/Beta.app"))
+        model.apps = [alpha, beta]
+        model.setPageCount(3)
+        model.goToPage(2)
+
+        model.search = "alpha"
+        try require(model.currentPage == 0, "Starting a search did not return to the first page")
+        try require(model.rootEntries == [.app(alpha)], "Search did not filter applications case-insensitively")
+
+        model.search = "Beta"
+        try require(model.rootEntries == [.app(beta)], "Search did not update when its query changed")
+
+        model.search = "missing"
+        try require(model.rootEntries.isEmpty, "A missing search query returned unexpected applications")
     }
 
     private static func duplicateSavedGroupsAndPathsAreSanitized() throws {
@@ -295,6 +318,11 @@ struct LauncherQualityTests {
         try require(model.currentPage == 0, "The page moved behind the Settings sheet")
         model.showSettings = false
 
+        model.showLauncherSettings = true
+        model.navigateVisiblePages(by: 1)
+        try require(model.currentPage == 0, "The page moved behind the launcher settings popover")
+        model.showLauncherSettings = false
+
         model.pendingDeleteApp = AppItem(url: URL(fileURLWithPath: "/Applications/Delete.app"))
         model.navigateVisiblePages(by: 1)
         try require(model.currentPage == 0, "The page moved behind the delete confirmation")
@@ -307,6 +335,21 @@ struct LauncherQualityTests {
 
         model.navigateVisiblePages(by: 1)
         try require(model.currentPage == 1, "Page navigation did not resume after modal UI closed")
+    }
+
+    private static func launcherWindowAcceptsKeyboardFocus() throws {
+        let window = LauncherWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        LauncherWindowPresentation.configureChrome(of: window)
+
+        try require(window.canBecomeKey, "The full-screen launcher window cannot accept keyboard focus")
+        try require(window.canBecomeMain, "The full-screen launcher window cannot become the main window")
+        try require(window.styleMask == .borderless, "The launcher window unexpectedly displays title-bar chrome")
+        try require(window.toolbar == nil, "The launcher window unexpectedly displays a toolbar")
     }
 
     private static func dismissMotionMatchesReferenceApplication() throws {

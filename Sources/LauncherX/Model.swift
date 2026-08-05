@@ -92,6 +92,21 @@ enum LaunchpadDismissMotion {
     }
 }
 
+@MainActor
+final class LauncherWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+@MainActor
+enum LauncherWindowPresentation {
+    static func configureChrome(of window: NSWindow) {
+        window.styleMask = .borderless
+        window.title = ""
+        window.toolbar = nil
+    }
+}
+
 struct FolderGridMetrics: Equatable, Sendable {
     static let headerHeight = 42.0
     static let pageIndicatorHeight = 26.0
@@ -222,6 +237,7 @@ struct RootGridMetrics: Equatable, Sendable {
         if cleaned != search { search = cleaned; return }
         if oldValue != search { currentPage = 0 }
     } }
+    @Published var showLauncherSettings = false
     @Published var showSettings = false
     @Published var openGroupID: UUID?
     @Published var currentPage = 0
@@ -447,7 +463,7 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func handleApplicationDidResignActive() {
-        guard !showSettings else { return }
+        guard !showSettings, !showLauncherSettings else { return }
         dismissLauncher(animated: false)
     }
 
@@ -529,7 +545,8 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func navigateVisiblePages(by delta: Int) {
-        guard !showSettings, pendingDeleteApp == nil, errorMessage == nil else { return }
+        guard !showSettings, !showLauncherSettings,
+              pendingDeleteApp == nil, errorMessage == nil else { return }
         if openGroupID == nil { changePage(by: delta) }
         else {
             let addition = folderPage.addingReportingOverflow(delta)
@@ -653,12 +670,7 @@ struct RootGridMetrics: Equatable, Sendable {
 
         NSApp.setActivationPolicy(.accessory)
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
-        window.title = ""
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
-        window.toolbar = nil
-        window.styleMask = [.borderless]
+        LauncherWindowPresentation.configureChrome(of: window)
         window.hasShadow = false
         window.level = .floating
         window.isMovable = false
@@ -727,6 +739,7 @@ struct RootGridMetrics: Equatable, Sendable {
             childWindow.close()
         }
         showSettings = false
+        showLauncherSettings = false
         pendingDeleteApp = nil
         closeFolder()
         search = ""
@@ -904,7 +917,7 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     nonisolated static func sanitizedLanguage(_ value: String?) -> String {
-        guard let value, ["system", "en", "ja"].contains(value) else { return "system" }
+        guard let value, ["system", "en", "ja"].contains(value) else { return "en" }
         return value
     }
 
