@@ -22,11 +22,15 @@ A native SwiftUI application launcher that brings the classic macOS Launchpad ex
 - Adaptive folder canvas that prevents icons from overflowing
 - Automatic Utilities grouping and App Store game grouping
 - Search, application refresh, wallpaper selection, and display settings
-- English, Japanese, and automatic system-language modes
+- English by default, with Japanese and automatic system-language modes
 - Native Liquid Glass controls on macOS 26 and later
 - Reduce Motion and VoiceOver support
 - 0.25-second fade-and-zoom closing motion modeled after classic Launchpad behavior
 - Local-only operation with no analytics or network service
+
+## Screenshot
+
+![Launchpad Classic 3.10.2 showing the full-screen application grid](Screenshots/launchpad-classic-3.10.2.png)
 
 ## Requirements
 
@@ -36,9 +40,9 @@ A native SwiftUI application launcher that brings the classic macOS Launchpad ex
 
 ## Install
 
-1. Download `LaunchpadClassic-3.10.1.zip` from the [latest release](../../releases/latest).
+1. Download `LaunchpadClassic-3.10.2.zip` from the [latest release](../../releases/latest).
 2. Extract the ZIP archive.
-3. Move `LaunchpadClassic-3.10.1.app` to `/Applications`.
+3. Move `LaunchpadClassic-3.10.2.app` to `/Applications`.
 4. Open the application.
 
 The downloadable build is locally signed. If macOS blocks the first launch, Control-click the application in Finder, choose **Open**, and confirm once.
@@ -86,7 +90,7 @@ Launchpad Classicは、従来のmacOS Launchpadに近い操作感を、現在の
 - アイコン数に応じて変化するフォルダー表示領域
 - ユーティリティとApp Storeゲームの自動グループ化
 - アプリ検索、一覧更新、背景選択、表示設定
-- 日本語、英語、システム言語の自動選択
+- 英語を初期設定とし、日本語とシステム言語の自動選択にも対応
 - macOS 26以降のLiquid Glass対応
 - VoiceOverと「視差効果を減らす」設定への対応
 - クラシックなLaunchpadに近い終了アニメーション
@@ -94,7 +98,7 @@ Launchpad Classicは、従来のmacOS Launchpadに近い操作感を、現在の
 
 ### インストール
 
-1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.10.1.zip`をダウンロードします。
+1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.10.2.zip`をダウンロードします。
 2. ZIPを展開し、APPを「アプリケーション」フォルダーへ移動します。
 3. APPを起動します。
 

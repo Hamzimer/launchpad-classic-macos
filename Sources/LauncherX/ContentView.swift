@@ -108,90 +108,183 @@ struct LauncherSettingsMenu: View {
     @EnvironmentObject var model: LauncherModel
 
     var body: some View {
-        Menu {
-            Button {
-                model.showSettings = true
-            } label: {
-                Label(model.text("Settings…", "設定…"), systemImage: "gearshape")
-            }
-
-            Menu {
-                sizeButton(72, en: "Small", ja: "小")
-                sizeButton(92, en: "Medium", ja: "中")
-                sizeButton(112, en: "Large", ja: "大")
-                Divider()
-                Button(model.text("Smaller", "小さくする")) { model.adjustIconSize(by: -4) }
-                Button(model.text("Larger", "大きくする")) { model.adjustIconSize(by: 4) }
-            } label: {
-                Label(model.text("Display", "表示"), systemImage: "rectangle.grid.3x2")
-            }
-
-            Menu {
-                backgroundButton("wallpaper", en: "Current Desktop Wallpaper", ja: "現在のデスクトップ壁紙")
-                Divider()
-                backgroundButton("aurora", en: "Aurora", ja: "オーロラ")
-                backgroundButton("ocean", en: "Ocean", ja: "オーシャン")
-                backgroundButton("dark", en: "Dark", ja: "ダーク")
-                backgroundButton("light", en: "Light", ja: "ライト")
-                if !model.wallpapers.isEmpty {
-                    Divider()
-                    Menu(model.text("macOS Wallpapers", "macOS壁紙")) {
-                        ForEach(model.wallpapers) { wallpaper in
-                            let value = "file:" + wallpaper.url.path
-                            Button(selectionTitle(wallpaper.name, selected: model.background == value)) {
-                                model.background = value
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Label(model.text("Background", "背景"), systemImage: "photo")
-            }
-
-            Divider()
-            Button {
-                model.scan()
-            } label: {
-                Label(
-                    model.isScanning ? model.text("Updating…", "更新中…") : model.text("Update App List", "アプリ一覧を更新"),
-                    systemImage: "arrow.clockwise"
-                )
-            }
-            .disabled(model.isScanning)
-
-            Divider()
-            Button {
-                NSApp.terminate(nil)
-            } label: {
-                Label(model.text("Quit Launchpad Classic", "Launchpad Classicを終了"), systemImage: "power")
-            }
+        Button {
+            model.showLauncherSettings.toggle()
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .contentShape(Circle())
-                .accessibilityLabel(model.text("Launcher Settings", "Launcher設定"))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .buttonStyle(.plain)
+        .accessibilityLabel(model.text("Launcher Settings", "Launcher設定"))
+        .popover(isPresented: $model.showLauncherSettings, arrowEdge: .top) {
+            LauncherSettingsPopover()
+                .environmentObject(model)
+        }
+    }
+}
+
+struct LauncherSettingsPopover: View {
+    @EnvironmentObject var model: LauncherModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Button {
+                    model.showLauncherSettings = false
+                    model.showSettings = true
+                } label: {
+                    actionRow(model.text("Settings…", "設定…"), systemImage: "gearshape")
+                }
+                .buttonStyle(.plain)
+
+                Divider()
+
+                sectionHeader(model.text("Display", "表示"), systemImage: "rectangle.grid.3x2")
+                HStack(spacing: 8) {
+                    sizeButton(72, en: "Small", ja: "小")
+                    sizeButton(92, en: "Medium", ja: "中")
+                    sizeButton(112, en: "Large", ja: "大")
+                }
+                HStack(spacing: 8) {
+                    Button { model.adjustIconSize(by: -4) } label: {
+                        Label(model.text("Smaller", "小さく"), systemImage: "minus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    Button { model.adjustIconSize(by: 4) } label: {
+                        Label(model.text("Larger", "大きく"), systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+
+                Divider()
+
+                sectionHeader(model.text("Background", "背景"), systemImage: "photo")
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    backgroundButton("wallpaper", en: "Desktop", ja: "デスクトップ")
+                    backgroundButton("aurora", en: "Aurora", ja: "オーロラ")
+                    backgroundButton("ocean", en: "Ocean", ja: "オーシャン")
+                    backgroundButton("dark", en: "Dark", ja: "ダーク")
+                    backgroundButton("light", en: "Light", ja: "ライト")
+                }
+
+                if !model.wallpapers.isEmpty {
+                    DisclosureGroup {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(model.wallpapers) { wallpaper in
+                                let value = "file:" + wallpaper.url.path
+                                Button {
+                                    model.background = value
+                                } label: {
+                                    selectionRow(wallpaper.name, selected: model.background == value)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.top, 6)
+                    } label: {
+                        Label(model.text("macOS Wallpapers", "macOS壁紙"), systemImage: "photo.stack")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    model.scan()
+                } label: {
+                    actionRow(
+                        model.isScanning
+                            ? model.text("Updating…", "更新中…")
+                            : model.text("Update App List", "アプリ一覧を更新"),
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isScanning)
+
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    actionRow(
+                        model.text("Quit Launchpad Classic", "Launchpad Classicを終了"),
+                        systemImage: "power",
+                        color: .red
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+        }
+        .frame(width: 320, height: min(540, preferredHeight))
     }
 
-    @ViewBuilder
+    private var preferredHeight: CGFloat {
+        model.wallpapers.isEmpty ? 490 : 540
+    }
+
+    private func sectionHeader(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func actionRow(
+        _ title: String,
+        systemImage: String,
+        color: Color = .primary
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+    }
+
     private func sizeButton(_ size: Double, en: String, ja: String) -> some View {
-        Button(selectionTitle(model.text(en, ja), selected: model.iconSize == size)) {
+        Button {
             model.setIconSize(size)
+        } label: {
+            selectionTile(model.text(en, ja), selected: abs(model.iconSize - size) < 0.5)
         }
+        .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private func backgroundButton(_ value: String, en: String, ja: String) -> some View {
-        Button(selectionTitle(model.text(en, ja), selected: model.background == value)) {
+        Button {
             model.background = value
+        } label: {
+            selectionTile(model.text(en, ja), selected: model.background == value)
         }
+        .buttonStyle(.plain)
     }
 
-    private func selectionTitle(_ title: String, selected: Bool) -> String {
-        title + (selected ? " ✓" : "")
+    private func selectionTile(_ title: String, selected: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            Text(title).lineLimit(1)
+        }
+        .font(.system(size: 12, weight: selected ? .semibold : .regular))
+        .foregroundStyle(selected ? Color.accentColor : Color.primary)
+        .frame(maxWidth: .infinity, minHeight: 30)
+        .background(
+            selected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 7)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func selectionRow(_ title: String, selected: Bool) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            Text(title).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }
 
