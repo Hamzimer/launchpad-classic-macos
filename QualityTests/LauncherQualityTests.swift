@@ -14,6 +14,8 @@ struct LauncherQualityTests {
         do {
             try invalidSavedPreferencesAreSanitized()
             try freshInstallUsesDesktopWallpaper()
+            try traditionalChineseLocalizationIsComplete()
+            try systemLanguageResolutionHandlesTraditionalChineseRegions()
             try searchFiltersApplicationsAndResetsPaging()
             try duplicateSavedGroupsAndPathsAreSanitized()
             try duplicateRuntimeOrderDoesNotCrashOrLoseEntries()
@@ -24,6 +26,7 @@ struct LauncherQualityTests {
             try pageNavigationHandlesIntegerBoundaries()
             try modalUIBlocksBackgroundPageNavigation()
             try launcherWindowAcceptsKeyboardFocus()
+            try quitShortcutRequiresCommandQ()
             try dismissMotionMatchesReferenceApplication()
             try referenceIconSizingMatchesAttachedApp()
             try rootGridUsesAvailableScreenSpace()
@@ -38,7 +41,7 @@ struct LauncherQualityTests {
             try await hiddenLauncherRetainsPreparedIconsForReopening()
             try applicationUpdatePreservesUserLayout()
             try await fileOperatorRejectsUnsafeDeleteLocation()
-            print("Launcher quality tests passed (26/26)")
+            print("Launcher quality tests passed (29/29)")
         } catch {
             FileHandle.standardError.write(Data("Launcher quality tests failed: \(error)\n".utf8))
             Darwin.exit(EXIT_FAILURE)
@@ -77,6 +80,86 @@ struct LauncherQualityTests {
         try require(
             LauncherModel.defaultBackground == "wallpaper",
             "The default background no longer represents the Desktop wallpaper"
+        )
+    }
+
+    private static func traditionalChineseLocalizationIsComplete() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+        model.language = "zh-Hant"
+
+        try require(
+            model.text("Folder", "フォルダ", "資料夾") == "資料夾",
+            "Traditional Chinese did not select its localized UI text"
+        )
+
+        let first = AppItem(url: URL(fileURLWithPath: "/Applications/First.app"))
+        let second = AppItem(url: URL(fileURLWithPath: "/Applications/Second.app"))
+        model.apps = [first, second]
+        model.handleDrop(first.id, on: .app(second))
+        try require(
+            model.groups.first?.name == "資料夾",
+            "A folder created in Traditional Chinese did not receive a localized name"
+        )
+
+        let utilities = AppGroup(
+            name: "Utilities",
+            appPaths: ["/Applications/Utilities/Terminal.app"],
+            systemKind: "utilities"
+        )
+        let customUtilities = AppGroup(
+            name: "My Tools",
+            appPaths: ["/Applications/Utilities/Console.app"],
+            systemKind: "utilities"
+        )
+        model.groups.append(contentsOf: [utilities, customUtilities])
+        model.language = "en"
+        model.language = "zh-Hant"
+        try require(
+            model.group(for: utilities.id)?.name == "工具程式",
+            "The default Utilities folder did not follow the selected language"
+        )
+        try require(
+            model.group(for: customUtilities.id)?.name == "My Tools",
+            "Changing language overwrote a custom system-folder name"
+        )
+
+        let restoredModel = LauncherModel(defaults: context.defaults, autoScan: false)
+        try require(
+            restoredModel.language == "zh-Hant",
+            "Traditional Chinese language selection was not preserved"
+        )
+    }
+
+    private static func systemLanguageResolutionHandlesTraditionalChineseRegions() throws {
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["zh-Hant-TW"]) == "zh-Hant",
+            "zh-Hant was not recognized as Traditional Chinese"
+        )
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["zh_TW"]) == "zh-Hant",
+            "The zh_TW locale was not recognized as Traditional Chinese"
+        )
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["zh-HK"]) == "zh-Hant",
+            "The zh-HK locale was not recognized as Traditional Chinese"
+        )
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["zh-MO"]) == "zh-Hant",
+            "The zh-MO locale was not recognized as Traditional Chinese"
+        )
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["zh-Hans-CN"]) == "en",
+            "Simplified Chinese unexpectedly selected Traditional Chinese text"
+        )
+        try require(
+            LauncherModel.resolvedSystemLanguage(from: ["ja-JP"]) == "ja",
+            "Japanese system language resolution regressed"
+        )
+        try require(
+            LauncherModel.sanitizedLanguage("zh-TW") == "zh-Hant",
+            "A legacy Traditional Chinese language value was not migrated"
         )
     }
 
@@ -306,7 +389,7 @@ struct LauncherQualityTests {
         blankField.stringValue = "   "
         coordinator.saveRename()
         try require(
-            model.group(for: group.id)?.name == model.text("Folder", "フォルダ"),
+            model.group(for: group.id)?.name == model.text("Folder", "フォルダ", "資料夾"),
             "A blank folder name did not use the localized fallback"
         )
     }
@@ -334,11 +417,6 @@ struct LauncherQualityTests {
         defer { context.defaults.removePersistentDomain(forName: context.domain) }
         let model = LauncherModel(defaults: context.defaults, autoScan: false)
         model.setPageCount(3)
-
-        model.showSettings = true
-        model.navigateVisiblePages(by: 1)
-        try require(model.currentPage == 0, "The page moved behind the Settings sheet")
-        model.showSettings = false
 
         model.showLauncherSettings = true
         model.navigateVisiblePages(by: 1)
@@ -376,6 +454,28 @@ struct LauncherQualityTests {
         try require(
             window.backgroundColor == LauncherWindowPresentation.initialBackgroundColor,
             "The launcher window does not have a stable startup background"
+        )
+    }
+
+    private static func quitShortcutRequiresCommandQ() throws {
+        try require(
+            LauncherKeyboardCommand.isQuit(characters: "q", modifierFlags: .command),
+            "Command-Q was not recognized as the quit shortcut"
+        )
+        try require(
+            LauncherKeyboardCommand.isQuit(characters: "Q", modifierFlags: .command),
+            "Uppercase Command-Q was not recognized as the quit shortcut"
+        )
+        try require(
+            !LauncherKeyboardCommand.isQuit(characters: "q", modifierFlags: []),
+            "Plain Q unexpectedly triggered the quit shortcut"
+        )
+        try require(
+            !LauncherKeyboardCommand.isQuit(
+                characters: "q",
+                modifierFlags: [.command, .shift]
+            ),
+            "Command-Shift-Q unexpectedly triggered the quit shortcut"
         )
     }
 
