@@ -21,6 +21,16 @@ Organization works like the classic Launchpad. Drag one app onto the center of a
 
 The interface is designed to feel at home on macOS: a borderless full-screen presentation, Desktop-wallpaper background and blur options, Retina-density icons, responsive animations, keyboard dismissal with Escape, and background-click dismissal. It supports English, Japanese, Traditional Chinese, and automatic system-language selection, respects Reduce Motion, includes VoiceOver labels, and adopts native Liquid Glass controls on macOS 26 or later. First-page assets are prepared before presentation to avoid an empty startup frame, while bounded caches and automatic memory-pressure eviction keep repeated launches fast without allowing image memory to grow indefinitely.
 
+## Screenshots
+
+### Full-screen application grid
+
+![Launchpad Classic showing the current full-screen application grid over the Desktop wallpaper](Screenshots/launchpad-classic-app-grid.png)
+
+### Search ready
+
+![Launchpad Classic with the application search field focused](Screenshots/launchpad-classic-search.png)
+
 ## Highlights
 
 - Full-screen, borderless launcher with blurred desktop wallpaper
@@ -41,10 +51,6 @@ The interface is designed to feel at home on macOS: a borderless full-screen pre
 - 0.25-second fade-and-zoom closing motion modeled after classic Launchpad behavior
 - Bounded, pressure-evictable image caches for predictable memory use and instant reopening
 - Local-only operation with no analytics or network service
-
-## Screenshot
-
-![Launchpad Classic showing the full-screen application grid](Screenshots/launchpad-classic-3.10.2.png)
 
 ## Requirements
 
