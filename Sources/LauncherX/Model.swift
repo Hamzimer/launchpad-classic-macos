@@ -100,10 +100,24 @@ final class LauncherWindow: NSWindow {
 
 @MainActor
 enum LauncherWindowPresentation {
+    static let initialBackgroundColor = NSColor(
+        calibratedRed: 0.10,
+        green: 0.08,
+        blue: 0.28,
+        alpha: 1
+    )
+
     static func configureChrome(of window: NSWindow) {
         window.styleMask = .borderless
         window.title = ""
         window.toolbar = nil
+        window.isOpaque = true
+        window.backgroundColor = initialBackgroundColor
+        window.hasShadow = false
+
+        guard let contentView = window.contentView else { return }
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = initialBackgroundColor.cgColor
     }
 }
 
@@ -230,6 +244,8 @@ struct RootGridMetrics: Equatable, Sendable {
 }
 
 @MainActor final class LauncherModel: ObservableObject {
+    static let defaultBackground = "wallpaper"
+
     @Published var apps: [AppItem] = []
     @Published var groups: [AppGroup] = [] { didSet { saveGroups() } }
     @Published var search = "" { didSet {
@@ -251,6 +267,8 @@ struct RootGridMetrics: Equatable, Sendable {
     @Published private(set) var isScanning = false
     @Published private(set) var isDeleting = false
     @Published private(set) var isDismissing = false
+    @Published private(set) var isLauncherVisible = true
+    @Published private(set) var isInitialContentReady = false
     @Published var errorMessage: String?
     @Published var language: String { didSet {
         let cleaned = Self.sanitizedLanguage(language)
@@ -283,22 +301,33 @@ struct RootGridMetrics: Equatable, Sendable {
     private let backgroundImageLoader = LauncherBackgroundImageLoader()
     private let iconImageCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 96
-        cache.totalCostLimit = 64 * 1_024 * 1_024
+        cache.countLimit = LauncherMemoryPolicy.iconImageCacheCount
+        cache.totalCostLimit = LauncherMemoryPolicy.iconImageCacheCost
         return cache
     }()
+    private var applicationMonitor: LauncherApplicationMonitor?
     private var applicationScanTask: Task<Void, Never>?
     private var wallpaperScanTask: Task<Void, Never>?
     private var deleteTask: Task<Void, Never>?
     private var backgroundLoadTask: Task<Void, Never>?
+    private var cacheMaintenanceTask: Task<Void, Never>?
+    private var initialIconPreloadTask: Task<Void, Never>?
     private var requestedBackgroundPath: String?
     private var presentationRequestID: UUID?
     private var dismissalRequestID: UUID?
+    private weak var registeredLauncherWindow: NSWindow?
+    private var initialApplicationsReady = false
+    private var initialBackgroundReady = false
+    private var initialWindowFrameReady = false
+    private var initialReadinessHandlers: [@MainActor () -> Void] = []
     private var usesReferenceIconSize = true
     private var isApplyingReferenceIconSize = false
 
     init(defaults: UserDefaults = .standard, autoScan: Bool = true) {
         self.defaults = defaults
+        initialApplicationsReady = !autoScan
+        initialBackgroundReady = !autoScan
+        isInitialContentReady = !autoScan
         language = Self.sanitizedLanguage(defaults.string(forKey: "language"))
         if let storedNumber = defaults.object(forKey: "iconSize") as? NSNumber,
            storedNumber.doubleValue.isFinite {
@@ -313,13 +342,16 @@ struct RootGridMetrics: Equatable, Sendable {
             defaults.removeObject(forKey: "iconSize")
         }
         defaults.set(2, forKey: displayVersionKey)
-        background = Self.sanitizedBackground(defaults.string(forKey: "background") ?? "wallpaper")
+        background = Self.sanitizedBackground(
+            defaults.string(forKey: "background") ?? Self.defaultBackground
+        )
         if let data = defaults.data(forKey: groupsKey), data.count <= 2_000_000,
            let saved = try? JSONDecoder().decode([AppGroup].self, from: data) {
             groups = Self.sanitizedGroups(saved)
         }
         rootOrder = Self.sanitizedOrder(defaults.stringArray(forKey: orderKey) ?? [])
         if autoScan {
+            startApplicationMonitoring()
             scanWallpapers()
             scan()
         }
@@ -365,13 +397,23 @@ struct RootGridMetrics: Equatable, Sendable {
         let iconData = await iconLoader.iconData(for: app.url)
         let icon = iconData.flatMap(NSImage.init(data:))
             ?? NSWorkspace.shared.icon(forFile: app.url.path)
-        icon.size = NSSize(width: 512, height: 512)
-        iconImageCache.setObject(icon, forKey: key, cost: 512 * 512 * 4)
+        let pixelSize = LauncherMemoryPolicy.iconPixelSize
+        let logicalSize = LauncherMemoryPolicy.iconLogicalPointSize
+        icon.size = NSSize(width: logicalSize, height: logicalSize)
+        iconImageCache.setObject(icon, forKey: key, cost: pixelSize * pixelSize * 4)
         return icon
+    }
+
+    func cachedIcon(for app: AppItem) -> NSImage? {
+        iconImageCache.object(forKey: app.url.standardizedFileURL.path as NSString)
     }
 
     func scan() {
         applicationScanTask?.cancel()
+        if !initialApplicationsReady {
+            initialIconPreloadTask?.cancel()
+            initialIconPreloadTask = nil
+        }
         isScanning = true
         let scanner = applicationScanner
         let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
@@ -385,12 +427,31 @@ struct RootGridMetrics: Equatable, Sendable {
                     en: "The Applications folders could not be read.",
                     ja: "アプリケーションフォルダを読み込めませんでした。"
                 )
+                self.markInitialApplicationsReady()
                 return
             }
-            self.apps = result.apps
+            if self.apps != result.apps {
+                let availablePaths = Set(result.apps.map { $0.url.standardizedFileURL.path })
+                for previousApp in self.apps
+                    where !availablePaths.contains(previousApp.url.standardizedFileURL.path) {
+                    self.iconImageCache.removeObject(
+                        forKey: previousApp.url.standardizedFileURL.path as NSString
+                    )
+                }
+                self.apps = result.apps
+            }
             self.removeMissingApplicationsFromOpenState()
             self.bootstrapDefaultGroupsIfNeeded()
             self.syncNewGames()
+            self.preloadInitialPageIconsIfNeeded()
+        }
+    }
+
+    func whenInitialContentIsReady(_ handler: @escaping @MainActor () -> Void) {
+        if isInitialContentReady {
+            handler()
+        } else if initialReadinessHandlers.count < 8 {
+            initialReadinessHandlers.append(handler)
         }
     }
 
@@ -470,10 +531,12 @@ struct RootGridMetrics: Equatable, Sendable {
     func handleApplicationDidHide() {
         presentationRequestID = nil
         isDismissing = false
+        isLauncherVisible = false
         NSApp.presentationOptions = []
         if let window = launcherWindow() {
             resetLauncherWindowVisualState(window)
         }
+        releaseTransientImageResources()
     }
     func closeFolder() { openGroupID = nil; folderPage = 0; folderPageCount = 1 }
     func group(for id: UUID?) -> AppGroup? { groups.first { $0.id == id } }
@@ -646,11 +709,22 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func maximizeLauncherWindow() {
+        guard initialWindowFrameReady else { return }
         dismissalRequestID = nil
         isDismissing = false
+        isLauncherVisible = true
         let requestID = UUID()
         presentationRequestID = requestID
         configureLauncherWindow(requestID: requestID, remainingAttempts: 6)
+    }
+
+    func registerLauncherWindow(_ window: NSWindow) {
+        registeredLauncherWindow = window
+        initialWindowFrameReady = false
+    }
+
+    func markInitialWindowFrameReady() {
+        initialWindowFrameReady = true
     }
 
     private func configureLauncherWindow(requestID: UUID, remainingAttempts: Int) {
@@ -678,13 +752,14 @@ struct RootGridMetrics: Equatable, Sendable {
         window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
         window.setFrame(screen.frame, display: true, animate: false)
         resetLauncherWindowVisualState(window)
-        if background == "wallpaper" { refreshBackgroundImage(screen: screen) }
+        refreshBackgroundImage(screen: screen)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApp.activate()
     }
 
     private func launcherWindow() -> NSWindow? {
+        if let registeredLauncherWindow { return registeredLauncherWindow }
         if let keyWindow = NSApp.keyWindow,
            keyWindow.sheetParent == nil,
            !(keyWindow is NSPanel) {
@@ -743,6 +818,8 @@ struct RootGridMetrics: Equatable, Sendable {
         pendingDeleteApp = nil
         closeFolder()
         search = ""
+        isLauncherVisible = false
+        releaseTransientImageResources()
         NSApp.presentationOptions = []
         dismissalRequestID = nil
         isDismissing = false
@@ -752,6 +829,7 @@ struct RootGridMetrics: Equatable, Sendable {
     private func restoreLauncherAfterFailedLaunch() {
         dismissalRequestID = nil
         isDismissing = false
+        isLauncherVisible = true
         NSApp.unhide(nil)
         if let window = launcherWindow() {
             resetLauncherWindowVisualState(window)
@@ -760,6 +838,106 @@ struct RootGridMetrics: Equatable, Sendable {
         }
         NSApp.activate()
         maximizeLauncherWindow()
+    }
+
+    func shutdown() {
+        applicationMonitor?.stop()
+        applicationMonitor = nil
+        applicationScanTask?.cancel()
+        wallpaperScanTask?.cancel()
+        deleteTask?.cancel()
+        backgroundLoadTask?.cancel()
+        cacheMaintenanceTask?.cancel()
+        initialIconPreloadTask?.cancel()
+        iconImageCache.removeAllObjects()
+        selectedBackgroundImage = nil
+        requestedBackgroundPath = nil
+        registeredLauncherWindow = nil
+        initialReadinessHandlers.removeAll(keepingCapacity: false)
+    }
+
+    private func startApplicationMonitoring() {
+        let roots = LauncherFileScanner.applicationRoots(
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
+        let monitor = LauncherApplicationMonitor(roots: roots) { [weak self] in
+            guard let self else { return }
+            self.scan()
+        }
+        applicationMonitor = monitor
+        monitor.start()
+    }
+
+    private func releaseTransientImageResources() {
+        backgroundLoadTask?.cancel()
+        backgroundLoadTask = nil
+
+        cacheMaintenanceTask?.cancel()
+        let iconLoader = iconLoader
+        let backgroundImageLoader = backgroundImageLoader
+        cacheMaintenanceTask = Task {
+            await iconLoader.removeAllCachedIcons()
+            guard !Task.isCancelled else { return }
+            await backgroundImageLoader.removeAllCachedImages()
+        }
+    }
+
+    private func preloadInitialPageIconsIfNeeded() {
+        guard !initialApplicationsReady else {
+            evaluateInitialContentReadiness()
+            return
+        }
+
+        var seenPaths: Set<String> = []
+        var preloadApps: [AppItem] = []
+        for entry in rootEntries.prefix(35) {
+            let entryApps: [AppItem]
+            switch entry {
+            case .app(let app):
+                entryApps = [app]
+            case .group(let group):
+                entryApps = Array(apps(in: group).prefix(9))
+            }
+            for app in entryApps where seenPaths.insert(app.url.path).inserted {
+                preloadApps.append(app)
+                if preloadApps.count >= LauncherMemoryPolicy.iconImageCacheCount { break }
+            }
+            if preloadApps.count >= LauncherMemoryPolicy.iconImageCacheCount { break }
+        }
+
+        initialIconPreloadTask?.cancel()
+        initialIconPreloadTask = Task { [weak self] in
+            guard let self else { return }
+            for app in preloadApps {
+                guard !Task.isCancelled else { return }
+                _ = await self.loadIcon(for: app)
+            }
+            guard !Task.isCancelled else { return }
+            self.initialIconPreloadTask = nil
+            self.markInitialApplicationsReady()
+        }
+    }
+
+    private func markInitialApplicationsReady() {
+        guard !initialApplicationsReady else { return }
+        initialApplicationsReady = true
+        evaluateInitialContentReadiness()
+    }
+
+    private func markInitialBackgroundReady() {
+        guard !initialBackgroundReady else { return }
+        initialBackgroundReady = true
+        evaluateInitialContentReadiness()
+    }
+
+    private func evaluateInitialContentReadiness() {
+        guard !isInitialContentReady,
+              initialApplicationsReady,
+              initialBackgroundReady else { return }
+        isInitialContentReady = true
+        let handlers = initialReadinessHandlers
+        initialReadinessHandlers.removeAll(keepingCapacity: false)
+        for handler in handlers { handler() }
     }
 
     private func resetLauncherWindowVisualState(_ window: NSWindow) {
@@ -823,10 +1001,14 @@ struct RootGridMetrics: Equatable, Sendable {
         guard let imageURL else {
             requestedBackgroundPath = nil
             selectedBackgroundImage = nil
+            markInitialBackgroundReady()
             return
         }
         let path = imageURL.standardizedFileURL.path
-        if requestedBackgroundPath == path, selectedBackgroundImage != nil { return }
+        if requestedBackgroundPath == path, selectedBackgroundImage != nil {
+            markInitialBackgroundReady()
+            return
+        }
         requestedBackgroundPath = path
         selectedBackgroundImage = nil
         let loader = backgroundImageLoader
@@ -836,6 +1018,7 @@ struct RootGridMetrics: Equatable, Sendable {
             self.backgroundLoadTask = nil
             self.selectedBackgroundImage = imageData?.makeImage()
             if imageData == nil { self.requestedBackgroundPath = nil }
+            self.markInitialBackgroundReady()
         }
     }
     private func saveOrder() { defaults.set(Self.sanitizedOrder(rootOrder), forKey: orderKey) }
