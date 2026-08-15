@@ -6,7 +6,7 @@
 
 A native SwiftUI application launcher that brings the classic macOS Launchpad experience to current macOS releases.
 
-日本語の説明は[こちら](#日本語)です。
+[日本語](#日本語) | [繁體中文](#繁體中文)
 
 > [!NOTE]
 > This is an independent open-source project. It is not affiliated with or endorsed by Apple Inc. Apple, macOS, and Launchpad are trademarks of Apple Inc.
@@ -19,7 +19,7 @@ The launcher automatically scans the standard macOS application locations and wa
 
 Organization works like the classic Launchpad. Drag one app onto the center of another to create a folder, edit the folder name directly, rearrange its contents, or drag an app back out. Folder panels grow according to their contents so icons remain visible and begin at the top row. Common macOS Utilities and App Store games can be grouped automatically, and every custom folder, name, order, page arrangement, icon size, language choice, and background preference is restored after relaunching or installing a newer version.
 
-The interface is designed to feel at home on macOS: a borderless full-screen presentation, Desktop-wallpaper background and blur options, Retina-density icons, responsive animations, keyboard dismissal with Escape, and background-click dismissal. It supports English, Japanese, and automatic system-language selection, respects Reduce Motion, includes VoiceOver labels, and adopts native Liquid Glass controls on macOS 26 or later. First-page assets are prepared before presentation to avoid an empty startup frame, while bounded caches and automatic memory-pressure eviction keep repeated launches fast without allowing image memory to grow indefinitely.
+The interface is designed to feel at home on macOS: a borderless full-screen presentation, Desktop-wallpaper background and blur options, Retina-density icons, responsive animations, keyboard dismissal with Escape, and background-click dismissal. It supports English, Japanese, Traditional Chinese, and automatic system-language selection, respects Reduce Motion, includes VoiceOver labels, and adopts native Liquid Glass controls on macOS 26 or later. First-page assets are prepared before presentation to avoid an empty startup frame, while bounded caches and automatic memory-pressure eviction keep repeated launches fast without allowing image memory to grow indefinitely.
 
 ## Highlights
 
@@ -35,7 +35,7 @@ The interface is designed to feel at home on macOS: a borderless full-screen pre
 - Adaptive folder canvas that prevents icons from overflowing
 - Automatic Utilities grouping and App Store game grouping
 - Search, automatic application detection, wallpaper selection, and display settings
-- English by default, with Japanese and automatic system-language modes
+- English by default, with Japanese, Traditional Chinese, and automatic system-language modes
 - Native Liquid Glass controls on macOS 26 and later
 - Reduce Motion and VoiceOver support
 - 0.25-second fade-and-zoom closing motion modeled after classic Launchpad behavior
@@ -54,7 +54,7 @@ The interface is designed to feel at home on macOS: a borderless full-screen pre
 
 ## Install
 
-1. Download `LaunchpadClassic-3.12.0.pkg` from the [latest release](../../releases/latest).
+1. Download `LaunchpadClassic-3.13.0.pkg` from the [latest release](../../releases/latest).
 2. Quit a running older version, then open the installer.
 3. The installer replaces `/Applications/Launchpad Classic.app` while preserving folders and settings stored in your user account.
 
@@ -103,7 +103,7 @@ Launchpad Classicは、従来のLaunchpadが持っていた「開けばすぐに
 
 アプリを別のアプリの中央へドラッグするとフォルダーを作成でき、フォルダー名の直接編集、中の並べ替え、フォルダー外への取り出しに対応します。フォルダーの表示領域はアプリ数に合わせて変化し、アイコンは上段から整列します。macOS標準のユーティリティやApp Storeのゲームも自動的にグループ化できます。作成したフォルダー、名称、並び順、ページ構成、アイコンサイズ、言語、背景は、アプリを終了した後や新しいバージョンを上書きインストールした後も引き継がれます。
 
-UIは、枠のない全画面表示、Desktop壁紙とぼかし、Retina解像度のアイコン、滑らかなページアニメーション、Escキーと背景クリックによる終了など、macOSらしい操作感を重視しています。英語、日本語、システム言語の自動選択に対応し、VoiceOverと「視差効果を減らす」を尊重します。macOS 26以降ではネイティブのLiquid Glassコントロールを使用します。初期ページの素材を表示前に準備することで空の起動画面を抑え、上限付きキャッシュとメモリプレッシャー時の自動解放によって、高速な再表示と省メモリを両立しています。
+UIは、枠のない全画面表示、Desktop壁紙とぼかし、Retina解像度のアイコン、滑らかなページアニメーション、Escキーと背景クリックによる終了など、macOSらしい操作感を重視しています。英語、日本語、繁体字中国語、システム言語の自動選択に対応し、VoiceOverと「視差効果を減らす」を尊重します。macOS 26以降ではネイティブのLiquid Glassコントロールを使用します。初期ページの素材を表示前に準備することで空の起動画面を抑え、上限付きキャッシュとメモリプレッシャー時の自動解放によって、高速な再表示と省メモリを両立しています。
 
 ### 主な機能
 
@@ -118,7 +118,7 @@ UIは、枠のない全画面表示、Desktop壁紙とぼかし、Retina解像�
 - アイコン数に応じて変化するフォルダー表示領域
 - ユーティリティとApp Storeゲームの自動グループ化
 - アプリ検索、新規アプリの自動検出、背景選択、表示設定
-- 英語を初期設定とし、日本語とシステム言語の自動選択にも対応
+- 英語を初期設定とし、日本語、繁体字中国語、システム言語の自動選択にも対応
 - macOS 26以降のLiquid Glass対応
 - VoiceOverと「視差効果を減らす」設定への対応
 - クラシックなLaunchpadに近い終了アニメーション
@@ -127,7 +127,7 @@ UIは、枠のない全画面表示、Desktop壁紙とぼかし、Retina解像�
 
 ### インストール
 
-1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.12.0.pkg`をダウンロードします。
+1. [最新リリース](../../releases/latest)から`LaunchpadClassic-3.13.0.pkg`をダウンロードします。
 2. 実行中の旧バージョンを終了し、インストーラを開きます。
 3. `/Applications/Launchpad Classic.app`が上書きされ、ユーザー領域に保存されたフォルダー構成と設定は引き継がれます。
 
@@ -144,3 +144,56 @@ cd launchpad-classic-macos
 ```
 
 テストは`./run-quality-tests.sh`で実行できます。
+
+---
+
+## 繁體中文
+
+Launchpad Classic 是一款以 SwiftUI 製作的原生 macOS 應用程式啟動器，讓新版 macOS 也能保有經典 Launchpad 熟悉、直覺的操作體驗。
+
+### 介紹
+
+Launchpad Classic 專為希望「開啟後立即看見所有應用程式」的使用者而設計。啟動後，它會以桌面背景顯示全螢幕應用程式網格，只要按一下圖示即可開啟應用程式。不需要註冊帳號，也不依賴雲端服務、分析工具、廣告或外部網路；應用程式偵測、搜尋、排列和偏好設定都只在您的 Mac 上處理。
+
+啟動器會自動掃描並監控 macOS 的標準應用程式檔案夾。安裝新應用程式後，不必手動更新便會自動顯示；移除應用程式後，也會自動從清單中消失。頁數會依應用程式數量自動調整，並可使用滑鼠左右拖移、滾輪、觸控式軌跡板手勢或畫面底部的頁面指示點切換。搜尋欄會在輸入時立即篩選應用程式，旁邊的設定按鈕則可快速調整顯示與背景。
+
+整理方式延續經典 Launchpad 的邏輯。將一個應用程式拖到另一個圖示中央即可建立資料夾，並可直接重新命名、調整資料夾內的排列，或把應用程式拖回資料夾外。資料夾面板會依內容數量調整大小，圖示會從最上排開始排列。macOS 工具程式與 App Store 遊戲也能自動分組。自訂資料夾、名稱、順序、頁面配置、圖示大小、語言和背景設定，都會在重新啟動或安裝新版本後保留。
+
+介面採用符合 macOS 使用習慣的設計，包括無邊框全螢幕顯示、桌面背景與模糊效果、Retina 圖示、流暢動畫、Esc 鍵關閉及按一下背景返回桌面。支援英文、日文、繁體中文及自動系統語言模式；系統語言偵測包含台灣、香港、澳門和`zh-Hant`環境。它也支援 VoiceOver、「減少動態效果」，並在 macOS 26 或更新版本使用原生 Liquid Glass 控制項。第一頁內容會在顯示前預先準備，減少空白啟動畫面；有限制的快取和記憶體壓力自動釋放機制，則兼顧快速重新開啟與較低的記憶體用量。
+
+### 主要功能
+
+- 依已安裝應用程式數量自動建立頁面
+- 自動偵測應用程式安裝與移除，不需要手動更新
+- 支援滑鼠拖移、滾輪、觸控式軌跡板與頁面指示點
+- 可調整應用程式圖示大小，並使用 Retina 解析度平滑顯示
+- 將應用程式拖到另一個圖示中央即可建立資料夾
+- 可重新命名資料夾、調整內容順序及將應用程式移出資料夾
+- 資料夾顯示範圍會依圖示數量自動調整
+- 自動整理 macOS 工具程式與 App Store 遊戲
+- 應用程式搜尋、桌布選擇與顯示設定
+- 英文為預設語言，並支援日文、繁體中文及系統語言自動選擇
+- 支援 macOS 26 或更新版本的 Liquid Glass
+- 支援 VoiceOver 與「減少動態效果」
+- 使用有限制並可因應記憶體壓力釋放的圖像快取
+- 不含外部通訊、廣告、分析或遙測
+
+### 安裝
+
+1. 從[最新版本](../../releases/latest)下載`LaunchpadClassic-3.13.0.pkg`。
+2. 結束正在執行的舊版本，然後開啟安裝程式。
+3. 安裝程式會取代`/Applications/Launchpad Classic.app`，並保留使用者帳號中的資料夾配置和設定。
+
+也提供 ZIP 版本供手動安裝。後續版本會維持相同的`Launchpad Classic.app`名稱，方便直接取代舊版本。
+
+如果 macOS 阻止第一次啟動，請在 Finder 中按住 Control 鍵並按一下應用程式，選擇「打開」，然後確認。
+
+### 從原始碼建置
+
+```sh
+git clone https://github.com/Hamzimer/launchpad-classic-macos.git
+cd launchpad-classic-macos
+./build-app.sh
+```
+
+可執行`./run-quality-tests.sh`進行測試。

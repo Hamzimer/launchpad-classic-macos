@@ -274,6 +274,7 @@ struct RootGridMetrics: Equatable, Sendable {
         let cleaned = Self.sanitizedLanguage(language)
         if cleaned != language { language = cleaned; return }
         defaults.set(language, forKey: "language")
+        updateLocalizedSystemGroupNames()
     } }
     @Published var background: String { didSet {
         let cleaned = Self.sanitizedBackground(background)
@@ -350,6 +351,7 @@ struct RootGridMetrics: Equatable, Sendable {
             groups = Self.sanitizedGroups(saved)
         }
         rootOrder = Self.sanitizedOrder(defaults.stringArray(forKey: orderKey) ?? [])
+        updateLocalizedSystemGroupNames()
         if autoScan {
             startApplicationMonitoring()
             scanWallpapers()
@@ -358,10 +360,19 @@ struct RootGridMetrics: Equatable, Sendable {
         refreshBackgroundImage()
     }
 
-    var isJapanese: Bool {
-        language == "ja" || (language == "system" && Locale.preferredLanguages.first?.hasPrefix("ja") == true)
+    var resolvedLanguage: String {
+        language == "system"
+            ? Self.resolvedSystemLanguage(from: Locale.preferredLanguages)
+            : language
     }
-    func text(_ en: String, _ ja: String) -> String { isJapanese ? ja : en }
+
+    func text(_ en: String, _ ja: String, _ zhHant: String) -> String {
+        switch resolvedLanguage {
+        case "ja": ja
+        case "zh-Hant": zhHant
+        default: en
+        }
+    }
 
     var rootEntries: [LauncherEntry] {
         if !search.isEmpty {
@@ -425,7 +436,8 @@ struct RootGridMetrics: Equatable, Sendable {
             guard result.accessibleRootCount > 0 else {
                 self.presentError(
                     en: "The Applications folders could not be read.",
-                    ja: "アプリケーションフォルダを読み込めませんでした。"
+                    ja: "アプリケーションフォルダを読み込めませんでした。",
+                    zhHant: "無法讀取應用程式檔案夾。"
                 )
                 self.markInitialApplicationsReady()
                 return
@@ -476,7 +488,11 @@ struct RootGridMetrics: Equatable, Sendable {
         guard apps.contains(where: { $0.id == app.id }),
               app.url.isFileURL,
               app.url.pathExtension.lowercased() == "app" else {
-            presentError(en: "This application is no longer available.", ja: "このアプリケーションは利用できません。")
+            presentError(
+                en: "This application is no longer available.",
+                ja: "このアプリケーションは利用できません。",
+                zhHant: "此應用程式已無法使用。"
+            )
             return
         }
         dismissLauncher()
@@ -487,7 +503,8 @@ struct RootGridMetrics: Equatable, Sendable {
                     self.restoreLauncherAfterFailedLaunch()
                     self.presentError(
                         en: "The application could not be opened: \(error.localizedDescription)",
-                        ja: "アプリケーションを開けませんでした: \(error.localizedDescription)"
+                        ja: "アプリケーションを開けませんでした: \(error.localizedDescription)",
+                        zhHant: "無法開啟應用程式：\(error.localizedDescription)"
                     )
                 }
             }
@@ -543,7 +560,11 @@ struct RootGridMetrics: Equatable, Sendable {
 
     func renameGroup(_ id: UUID, to name: String) {
         guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
-        groups[index].name = Self.sanitizedGroupName(name, allowEmpty: true, fallback: text("Folder", "フォルダ"))
+        groups[index].name = Self.sanitizedGroupName(
+            name,
+            allowEmpty: true,
+            fallback: text("Folder", "フォルダ", "資料夾")
+        )
     }
 
     func finalizeGroupName(_ id: UUID) {
@@ -551,7 +572,7 @@ struct RootGridMetrics: Equatable, Sendable {
         groups[index].name = Self.sanitizedGroupName(
             groups[index].name,
             allowEmpty: false,
-            fallback: text("Folder", "フォルダ")
+            fallback: text("Folder", "フォルダ", "資料夾")
         )
     }
 
@@ -629,7 +650,10 @@ struct RootGridMetrics: Equatable, Sendable {
         case (.app(let sourceApp), .app(let targetApp)):
             let previousOrder = rootEntries.map(\.id)
             detachFromGroups(paths: [sourceApp.url.path, targetApp.url.path])
-            let group = AppGroup(name: text("Folder", "フォルダ"), appPaths: [targetApp.url.path, sourceApp.url.path])
+            let group = AppGroup(
+                name: text("Folder", "フォルダ", "資料夾"),
+                appPaths: [targetApp.url.path, sourceApp.url.path]
+            )
             groups.append(group)
             replaceOrderItems([targetApp.id, sourceApp.id], with: "group:" + group.id.uuidString, in: previousOrder)
             openGroupID = group.id
@@ -702,7 +726,8 @@ struct RootGridMetrics: Equatable, Sendable {
             case .failure(let details):
                 self.presentError(
                     en: "The application could not be moved to the Trash: \(details)",
-                    ja: "アプリケーションをゴミ箱へ移動できませんでした: \(details)"
+                    ja: "アプリケーションをゴミ箱へ移動できませんでした: \(details)",
+                    zhHant: "無法將應用程式移到垃圾桶：\(details)"
                 )
             }
         }
@@ -982,7 +1007,8 @@ struct RootGridMetrics: Equatable, Sendable {
         } catch {
             presentError(
                 en: "The folder arrangement could not be saved.",
-                ja: "フォルダの構成を保存できませんでした。"
+                ja: "フォルダの構成を保存できませんでした。",
+                zhHant: "無法儲存資料夾配置。"
             )
         }
     }
@@ -1022,13 +1048,53 @@ struct RootGridMetrics: Equatable, Sendable {
         }
     }
     private func saveOrder() { defaults.set(Self.sanitizedOrder(rootOrder), forKey: orderKey) }
+
+    private func updateLocalizedSystemGroupNames() {
+        var updatedGroups = groups
+        var changed = false
+
+        for index in updatedGroups.indices {
+            let knownNames: Set<String>
+            let localizedName: String
+            switch updatedGroups[index].systemKind {
+            case "utilities":
+                knownNames = ["Utilities", "ユーティリティ", "工具程式"]
+                localizedName = text("Utilities", "ユーティリティ", "工具程式")
+            case "games":
+                knownNames = ["Games", "ゲーム", "遊戲"]
+                localizedName = text("Games", "ゲーム", "遊戲")
+            default:
+                continue
+            }
+
+            guard knownNames.contains(updatedGroups[index].name),
+                  updatedGroups[index].name != localizedName else { continue }
+            updatedGroups[index].name = localizedName
+            changed = true
+        }
+
+        if changed { groups = updatedGroups }
+    }
+
     private func bootstrapDefaultGroupsIfNeeded() {
         guard !defaults.bool(forKey: defaultsKey) else { return }
         let alreadyGrouped = Set(groups.flatMap(\.appPaths))
         let utilities = apps.filter { $0.url.path.contains("/Utilities/") && !alreadyGrouped.contains($0.url.path) }
         let games = apps.filter { $0.category == "public.app-category.games" && !alreadyGrouped.contains($0.url.path) }
-        if !utilities.isEmpty { groups.append(AppGroup(name: text("Utilities", "ユーティリティ"), appPaths: utilities.map(\.url.path), systemKind: "utilities")) }
-        if !games.isEmpty { groups.append(AppGroup(name: text("Games", "ゲーム"), appPaths: games.map(\.url.path), systemKind: "games")) }
+        if !utilities.isEmpty {
+            groups.append(AppGroup(
+                name: text("Utilities", "ユーティリティ", "工具程式"),
+                appPaths: utilities.map(\.url.path),
+                systemKind: "utilities"
+            ))
+        }
+        if !games.isEmpty {
+            groups.append(AppGroup(
+                name: text("Games", "ゲーム", "遊戲"),
+                appPaths: games.map(\.url.path),
+                systemKind: "games"
+            ))
+        }
         defaults.set(true, forKey: defaultsKey)
     }
     private func syncNewGames() {
@@ -1040,7 +1106,11 @@ struct RootGridMetrics: Equatable, Sendable {
         if let index = groups.firstIndex(where: { $0.systemKind == "games" }) {
             groups[index].appPaths.append(contentsOf: newPaths)
         } else {
-            groups.append(AppGroup(name: text("Games", "ゲーム"), appPaths: newPaths, systemKind: "games"))
+            groups.append(AppGroup(
+                name: text("Games", "ゲーム", "遊戲"),
+                appPaths: newPaths,
+                systemKind: "games"
+            ))
         }
     }
     private func detachFromGroups(paths: Set<String>) {
@@ -1095,13 +1165,30 @@ struct RootGridMetrics: Equatable, Sendable {
 
     func clearError() { errorMessage = nil }
 
-    private func presentError(en: String, ja: String) {
-        errorMessage = text(en, ja)
+    private func presentError(en: String, ja: String, zhHant: String) {
+        errorMessage = text(en, ja, zhHant)
     }
 
     nonisolated static func sanitizedLanguage(_ value: String?) -> String {
-        guard let value, ["system", "en", "ja"].contains(value) else { return "en" }
-        return value
+        guard let value else { return "en" }
+        switch value {
+        case "system", "en", "ja", "zh-Hant": return value
+        case "zh-TW", "zh-HK", "zh-MO": return "zh-Hant"
+        default: return "en"
+        }
+    }
+
+    nonisolated static func resolvedSystemLanguage(from preferredLanguages: [String]) -> String {
+        guard let preferredLanguage = preferredLanguages.first else { return "en" }
+        let normalized = preferredLanguage.replacingOccurrences(of: "_", with: "-").lowercased()
+        if normalized.hasPrefix("ja") { return "ja" }
+        if normalized.hasPrefix("zh-hant")
+            || normalized.hasPrefix("zh-tw")
+            || normalized.hasPrefix("zh-hk")
+            || normalized.hasPrefix("zh-mo") {
+            return "zh-Hant"
+        }
+        return "en"
     }
 
     nonisolated static func sanitizedIconSize(_ value: Double) -> Double {

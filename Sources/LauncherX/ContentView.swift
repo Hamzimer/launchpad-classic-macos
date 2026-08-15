@@ -50,13 +50,21 @@ struct ContentView: View {
         .allowsHitTesting(!model.isDismissing)
         .foregroundStyle(model.background == "light" ? Color.black : Color.white)
         .sheet(isPresented: $model.showSettings) { SettingsView().environmentObject(model) }
-        .confirmationDialog(model.text("Delete this application?", "このアプリケーションを削除しますか？"),
+        .confirmationDialog(model.text(
+            "Delete this application?",
+            "このアプリケーションを削除しますか？",
+            "要刪除此應用程式嗎？"
+        ),
             isPresented: Binding(get: { model.pendingDeleteApp != nil }, set: { if !$0 { model.pendingDeleteApp = nil } })) {
-            Button(model.text("Move to Trash", "ゴミ箱に入れる"), role: .destructive) { model.deletePendingApplication() }
-            Button(model.text("Cancel", "キャンセル"), role: .cancel) { model.pendingDeleteApp = nil }
+            Button(model.text("Move to Trash", "ゴミ箱に入れる", "移到垃圾桶"), role: .destructive) {
+                model.deletePendingApplication()
+            }
+            Button(model.text("Cancel", "キャンセル", "取消"), role: .cancel) {
+                model.pendingDeleteApp = nil
+            }
         }
         .alert(
-            model.text("Operation Failed", "操作に失敗しました"),
+            model.text("Operation Failed", "操作に失敗しました", "操作失敗"),
             isPresented: Binding(
                 get: { model.errorMessage != nil },
                 set: { if !$0 { model.clearError() } }
@@ -64,7 +72,11 @@ struct ContentView: View {
         ) {
             Button("OK") { model.clearError() }
         } message: {
-            Text(model.errorMessage ?? model.text("An unknown error occurred.", "不明なエラーが発生しました。"))
+            Text(model.errorMessage ?? model.text(
+                "An unknown error occurred.",
+                "不明なエラーが発生しました。",
+                "發生未知錯誤。"
+            ))
         }
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: model.openGroupID)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.38), value: model.background)
@@ -89,12 +101,12 @@ struct ContentView: View {
     private var searchField: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField(model.text("Search", "検索"), text: $model.search)
+            TextField(model.text("Search", "検索", "搜尋"), text: $model.search)
                 .textFieldStyle(.plain).frame(width: 210)
             if !model.search.isEmpty {
                 Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .accessibilityLabel(model.text("Clear Search", "検索を消去"))
+                    .accessibilityLabel(model.text("Clear Search", "検索を消去", "清除搜尋"))
             }
             LauncherSettingsMenu()
         }
@@ -117,7 +129,7 @@ struct LauncherSettingsMenu: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(model.text("Launcher Settings", "Launcher設定"))
+        .accessibilityLabel(model.text("Launcher Settings", "Launcher設定", "啟動器設定"))
         .popover(isPresented: $model.showLauncherSettings, arrowEdge: .top) {
             LauncherSettingsPopover()
                 .environmentObject(model)
@@ -135,38 +147,38 @@ struct LauncherSettingsPopover: View {
                     model.showLauncherSettings = false
                     model.showSettings = true
                 } label: {
-                    actionRow(model.text("Settings…", "設定…"), systemImage: "gearshape")
+                    actionRow(model.text("Settings…", "設定…", "設定…"), systemImage: "gearshape")
                 }
                 .buttonStyle(.plain)
 
                 Divider()
 
-                sectionHeader(model.text("Display", "表示"), systemImage: "rectangle.grid.3x2")
+                sectionHeader(model.text("Display", "表示", "顯示"), systemImage: "rectangle.grid.3x2")
                 HStack(spacing: 8) {
-                    sizeButton(72, en: "Small", ja: "小")
-                    sizeButton(92, en: "Medium", ja: "中")
-                    sizeButton(112, en: "Large", ja: "大")
+                    sizeButton(72, en: "Small", ja: "小", zhHant: "小")
+                    sizeButton(92, en: "Medium", ja: "中", zhHant: "中")
+                    sizeButton(112, en: "Large", ja: "大", zhHant: "大")
                 }
                 HStack(spacing: 8) {
                     Button { model.adjustIconSize(by: -4) } label: {
-                        Label(model.text("Smaller", "小さく"), systemImage: "minus")
+                        Label(model.text("Smaller", "小さく", "縮小"), systemImage: "minus")
                             .frame(maxWidth: .infinity)
                     }
                     Button { model.adjustIconSize(by: 4) } label: {
-                        Label(model.text("Larger", "大きく"), systemImage: "plus")
+                        Label(model.text("Larger", "大きく", "放大"), systemImage: "plus")
                             .frame(maxWidth: .infinity)
                     }
                 }
 
                 Divider()
 
-                sectionHeader(model.text("Background", "背景"), systemImage: "photo")
+                sectionHeader(model.text("Background", "背景", "背景"), systemImage: "photo")
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    backgroundButton("wallpaper", en: "Desktop", ja: "デスクトップ")
-                    backgroundButton("aurora", en: "Aurora", ja: "オーロラ")
-                    backgroundButton("ocean", en: "Ocean", ja: "オーシャン")
-                    backgroundButton("dark", en: "Dark", ja: "ダーク")
-                    backgroundButton("light", en: "Light", ja: "ライト")
+                    backgroundButton("wallpaper", en: "Desktop", ja: "デスクトップ", zhHant: "桌面")
+                    backgroundButton("aurora", en: "Aurora", ja: "オーロラ", zhHant: "極光")
+                    backgroundButton("ocean", en: "Ocean", ja: "オーシャン", zhHant: "海洋")
+                    backgroundButton("dark", en: "Dark", ja: "ダーク", zhHant: "深色")
+                    backgroundButton("light", en: "Light", ja: "ライト", zhHant: "淺色")
                 }
 
                 if !model.wallpapers.isEmpty {
@@ -184,7 +196,7 @@ struct LauncherSettingsPopover: View {
                         }
                         .padding(.top, 6)
                     } label: {
-                        Label(model.text("macOS Wallpapers", "macOS壁紙"), systemImage: "photo.stack")
+                        Label(model.text("macOS Wallpapers", "macOS壁紙", "macOS 桌布"), systemImage: "photo.stack")
                             .font(.system(size: 13, weight: .medium))
                     }
                 }
@@ -193,7 +205,7 @@ struct LauncherSettingsPopover: View {
                     NSApp.terminate(nil)
                 } label: {
                     actionRow(
-                        model.text("Quit Launchpad Classic", "Launchpad Classicを終了"),
+                        model.text("Quit Launchpad Classic", "Launchpad Classicを終了", "結束 Launchpad Classic"),
                         systemImage: "power",
                         color: .red
                     )
@@ -229,20 +241,20 @@ struct LauncherSettingsPopover: View {
             .contentShape(Rectangle())
     }
 
-    private func sizeButton(_ size: Double, en: String, ja: String) -> some View {
+    private func sizeButton(_ size: Double, en: String, ja: String, zhHant: String) -> some View {
         Button {
             model.setIconSize(size)
         } label: {
-            selectionTile(model.text(en, ja), selected: abs(model.iconSize - size) < 0.5)
+            selectionTile(model.text(en, ja, zhHant), selected: abs(model.iconSize - size) < 0.5)
         }
         .buttonStyle(.plain)
     }
 
-    private func backgroundButton(_ value: String, en: String, ja: String) -> some View {
+    private func backgroundButton(_ value: String, en: String, ja: String, zhHant: String) -> some View {
         Button {
             model.background = value
         } label: {
-            selectionTile(model.text(en, ja), selected: model.background == value)
+            selectionTile(model.text(en, ja, zhHant), selected: model.background == value)
         }
         .buttonStyle(.plain)
     }
@@ -299,11 +311,15 @@ struct PagedAppGrid: View {
                         Image(systemName: model.search.isEmpty ? "square.grid.3x3" : "magnifyingglass")
                             .font(.system(size: 32, weight: .light))
                         Text(model.search.isEmpty
-                            ? model.text("No Applications Found", "アプリケーションが見つかりません")
-                            : model.text("No Results", "検索結果がありません"))
+                            ? model.text("No Applications Found", "アプリケーションが見つかりません", "找不到應用程式")
+                            : model.text("No Results", "検索結果がありません", "找不到結果"))
                             .font(.headline)
                         if !model.search.isEmpty {
-                            Text(model.text("Try a different search.", "別のキーワードで検索してください。"))
+                            Text(model.text(
+                                "Try a different search.",
+                                "別のキーワードで検索してください。",
+                                "請嘗試其他搜尋詞。"
+                            ))
                                 .font(.subheadline)
                         }
                     }
@@ -444,7 +460,8 @@ struct LaunchpadPageIndicator: View {
                 .onTapGesture { onSelect(page) }
                 .accessibilityLabel(model.text(
                     "Page \(page + 1) of \(pageCount)",
-                    "\(pageCount)ページ中\(page + 1)ページ"
+                    "\(pageCount)ページ中\(page + 1)ページ",
+                    "第 \(page + 1) 頁，共 \(pageCount) 頁"
                 ))
                 .accessibilityAddTraits(page == currentPage ? [.isButton, .isSelected] : .isButton)
             }
@@ -490,7 +507,11 @@ struct EntryTile: View {
             }
             .contextMenu {
                 if case .app(let app) = entry, app.isDeletable {
-                    Button(model.text("Delete Application…", "アプリケーションを削除…"), role: .destructive) {
+                    Button(model.text(
+                        "Delete Application…",
+                        "アプリケーションを削除…",
+                        "刪除應用程式…"
+                    ), role: .destructive) {
                         model.pendingDeleteApp = app
                     }
                 }
@@ -522,9 +543,9 @@ struct EntryTile: View {
     private var accessibilityHint: String {
         switch entry {
         case .app:
-            model.text("Opens the application", "アプリケーションを開きます")
+            model.text("Opens the application", "アプリケーションを開きます", "開啟應用程式")
         case .group:
-            model.text("Opens the folder", "フォルダを開きます")
+            model.text("Opens the folder", "フォルダを開きます", "開啟資料夾")
         }
     }
 }
@@ -743,10 +764,11 @@ struct FolderTitleEditor: View {
         }
         .buttonStyle(.plain)
         .disabled(renameCoordinator.isPresenting)
-        .accessibilityLabel(model.text("Rename Folder", "フォルダ名を変更"))
+        .accessibilityLabel(model.text("Rename Folder", "フォルダ名を変更", "重新命名資料夾"))
         .accessibilityHint(model.text(
             "Opens the folder name dialog",
-            "フォルダ名の変更画面を開きます"
+            "フォルダ名の変更画面を開きます",
+            "開啟資料夾名稱對話框"
         ))
         .padding(.horizontal, 12)
         .frame(width: 420, height: 42)
@@ -788,7 +810,8 @@ final class FolderRenamePanelCoordinator: NSObject, ObservableObject, NSWindowDe
         guard model.group(for: groupID) != nil else {
             model.errorMessage = model.text(
                 "This folder no longer exists.",
-                "このフォルダは存在しません。"
+                "このフォルダは存在しません。",
+                "此資料夾已不存在。"
             )
             return
         }
@@ -854,7 +877,7 @@ final class FolderRenamePanelCoordinator: NSObject, ObservableObject, NSWindowDe
             backing: .buffered,
             defer: false
         )
-        panel.title = model.text("Rename Folder", "フォルダ名を変更")
+        panel.title = model.text("Rename Folder", "フォルダ名を変更", "重新命名資料夾")
         panel.level = .modalPanel
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -863,12 +886,13 @@ final class FolderRenamePanelCoordinator: NSObject, ObservableObject, NSWindowDe
         panel.collectionBehavior = [.fullScreenAuxiliary]
         panel.delegate = self
 
-        let titleLabel = NSTextField(labelWithString: model.text("Folder Name", "フォルダ名"))
+        let titleLabel = NSTextField(labelWithString: model.text("Folder Name", "フォルダ名", "資料夾名稱"))
         titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
 
         let descriptionLabel = NSTextField(labelWithString: model.text(
             "Enter a new name, then select Save.",
-            "新しい名前を入力して「保存」を選択してください。"
+            "新しい名前を入力して「保存」を選択してください。",
+            "輸入新名稱，然後選取「儲存」。"
         ))
         descriptionLabel.font = .systemFont(ofSize: 13)
         descriptionLabel.textColor = .secondaryLabelColor
@@ -878,18 +902,18 @@ final class FolderRenamePanelCoordinator: NSObject, ObservableObject, NSWindowDe
         textField.usesSingleLineMode = true
         textField.maximumNumberOfLines = 1
         textField.lineBreakMode = .byTruncatingTail
-        textField.placeholderString = model.text("Folder Name", "フォルダ名")
-        textField.setAccessibilityLabel(model.text("Folder Name", "フォルダ名"))
+        textField.placeholderString = model.text("Folder Name", "フォルダ名", "資料夾名稱")
+        textField.setAccessibilityLabel(model.text("Folder Name", "フォルダ名", "資料夾名稱"))
         activeTextField = textField
 
         let cancelButton = NSButton(
-            title: model.text("Cancel", "キャンセル"),
+            title: model.text("Cancel", "キャンセル", "取消"),
             target: self,
             action: #selector(cancelRename)
         )
         cancelButton.keyEquivalent = "\u{1b}"
         let saveButton = NSButton(
-            title: model.text("Save", "保存"),
+            title: model.text("Save", "保存", "儲存"),
             target: self,
             action: #selector(saveRename)
         )
@@ -1076,13 +1100,17 @@ struct FolderAppTile: View {
                 return true
             }
             .contextMenu {
-                Button(model.text("Remove from Folder", "フォルダから取り出す")) {
+                Button(model.text("Remove from Folder", "フォルダから取り出す", "從資料夾移出")) {
                     model.remove(app, from: group)
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(app.name)
-            .accessibilityHint(model.text("Opens the application", "アプリケーションを開きます"))
+            .accessibilityHint(model.text(
+                "Opens the application",
+                "アプリケーションを開きます",
+                "開啟應用程式"
+            ))
             .accessibilityAddTraits(.isButton)
     }
 }
@@ -1151,14 +1179,23 @@ struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack { Text(model.text("Settings", "設定")).font(.title2.bold()); Spacer(); Button(model.text("Done", "完了")) { dismiss() } }
+            HStack {
+                Text(model.text("Settings", "設定", "設定")).font(.title2.bold())
+                Spacer()
+                Button(model.text("Done", "完了", "完成")) { dismiss() }
+            }
             Form {
-                Picker(model.text("Language", "言語"), selection: $model.language) {
-                    Text(model.text("System", "システム")).tag("system")
+                Picker(model.text("Language", "言語", "語言"), selection: $model.language) {
+                    Text(model.text("System", "システム", "系統")).tag("system")
                     Text("English").tag("en")
                     Text("日本語").tag("ja")
+                    Text("繁體中文").tag("zh-Hant")
                 }
-                HStack { Text(model.text("Display size", "表示サイズ")); Slider(value: $model.iconSize, in: 64...112, step: 4); Text("\(Int(model.iconSize))") }
+                HStack {
+                    Text(model.text("Display size", "表示サイズ", "顯示大小"))
+                    Slider(value: $model.iconSize, in: 64...112, step: 4)
+                    Text("\(Int(model.iconSize))")
+                }
             }
         }
         .padding(28)
