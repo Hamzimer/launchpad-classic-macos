@@ -72,7 +72,6 @@ struct ContentView: View {
             reduceMotion ? nil : .easeInOut(duration: 0.24),
             value: model.selectedBackgroundImage != nil
         )
-        .onAppear { model.maximizeLauncherWindow() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.maximizeLauncherWindow()
         }
@@ -190,21 +189,6 @@ struct LauncherSettingsPopover: View {
                     }
                 }
 
-                Divider()
-
-                Button {
-                    model.scan()
-                } label: {
-                    actionRow(
-                        model.isScanning
-                            ? model.text("Updating…", "更新中…")
-                            : model.text("Update App List", "アプリ一覧を更新"),
-                        systemImage: "arrow.clockwise"
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(model.isScanning)
-
                 Button {
                     NSApp.terminate(nil)
                 } label: {
@@ -218,11 +202,13 @@ struct LauncherSettingsPopover: View {
             }
             .padding(16)
         }
-        .frame(width: 320, height: min(540, preferredHeight))
+        .frame(width: 320, height: min(510, preferredHeight))
+        .background(Color(nsColor: .windowBackgroundColor))
+        .foregroundStyle(Color.primary)
     }
 
     private var preferredHeight: CGFloat {
-        model.wallpapers.isEmpty ? 490 : 540
+        model.wallpapers.isEmpty ? 440 : 510
     }
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
@@ -585,9 +571,19 @@ struct ApplicationArtwork: View {
     @StateObject private var state = ApplicationArtworkState()
 
     var body: some View {
+        let request = ApplicationArtworkRequest(
+            appID: app.id,
+            isLauncherVisible: model.isLauncherVisible
+        )
+        let preparedIcon = state.representedAppID == app.id
+            ? state.icon ?? model.cachedIcon(for: app)
+            : model.cachedIcon(for: app)
         Group {
-            if state.representedAppID == app.id, let icon = state.icon {
-                Image(nsImage: icon).resizable().aspectRatio(contentMode: .fit)
+            if let icon = preparedIcon {
+                Image(nsImage: icon)
+                    .interpolation(.high)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
             } else {
                 RoundedRectangle(cornerRadius: max(4, size * 0.2))
                     .fill(.thinMaterial)
@@ -599,13 +595,22 @@ struct ApplicationArtwork: View {
             }
         }
         .frame(width: size, height: size)
-        .task(id: app.id) {
+        .task(id: request) {
+            guard request.isLauncherVisible else {
+                state.releaseIcon()
+                return
+            }
             guard state.prepareToLoad(appID: app.id) else { return }
             let loadedIcon = await model.loadIcon(for: app)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, model.isLauncherVisible else { return }
             state.finishLoading(loadedIcon, appID: app.id)
         }
     }
+}
+
+private struct ApplicationArtworkRequest: Hashable {
+    let appID: String
+    let isLauncherVisible: Bool
 }
 
 @MainActor
@@ -623,6 +628,11 @@ final class ApplicationArtworkState: ObservableObject {
     func finishLoading(_ icon: NSImage, appID: String) {
         guard representedAppID == appID else { return }
         self.icon = icon
+    }
+
+    func releaseIcon() {
+        icon = nil
+        representedAppID = nil
     }
 }
 
@@ -1149,16 +1159,12 @@ struct SettingsView: View {
                     Text("日本語").tag("ja")
                 }
                 HStack { Text(model.text("Display size", "表示サイズ")); Slider(value: $model.iconSize, in: 64...112, step: 4); Text("\(Int(model.iconSize))") }
-                HStack {
-                    Button(model.text("Update App List", "アプリ一覧を更新")) { model.scan() }
-                        .disabled(model.isScanning)
-                    if model.isScanning {
-                        ProgressView().controlSize(.small)
-                        Text(model.text("Updating…", "更新中…")).foregroundStyle(.secondary)
-                    }
-                }
             }
-        }.padding(28).frame(width: 560, height: 270)
+        }
+        .padding(28)
+        .frame(width: 560, height: 220)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .foregroundStyle(Color.primary)
     }
 }
 

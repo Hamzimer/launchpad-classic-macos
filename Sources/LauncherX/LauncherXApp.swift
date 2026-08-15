@@ -17,27 +17,46 @@ struct LauncherXApp: App {
 final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private let model = LauncherModel()
     private var launcherWindow: LauncherWindow?
+    private var isWaitingForInitialContent = false
+    private var initialRevealTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.accessory)
-        presentLauncher()
+        requestLauncherPresentation()
     }
 
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        presentLauncher()
+        requestLauncherPresentation()
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        initialRevealTask?.cancel()
+        initialRevealTask = nil
+        model.shutdown()
+    }
+
+    private func requestLauncherPresentation() {
+        guard !isWaitingForInitialContent else { return }
+        isWaitingForInitialContent = true
+        model.whenInitialContentIsReady { [weak self] in
+            guard let self else { return }
+            self.isWaitingForInitialContent = false
+            self.presentLauncher()
+        }
     }
 
     private func presentLauncher() {
         if let launcherWindow {
+            guard initialRevealTask == nil else { return }
             NSApp.unhide(nil)
-            launcherWindow.makeKeyAndOrderFront(nil)
-            launcherWindow.orderFrontRegardless()
-            NSApp.activate()
+            LauncherWindowPresentation.configureChrome(of: launcherWindow)
+            launcherWindow.contentView?.layoutSubtreeIfNeeded()
+            launcherWindow.displayIfNeeded()
             model.maximizeLauncherWindow()
             return
         }
@@ -51,16 +70,36 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.backgroundColor = .clear
+        LauncherWindowPresentation.configureChrome(of: window)
         window.contentViewController = NSHostingController(
             rootView: ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 760, minHeight: 540)
         )
+        LauncherWindowPresentation.configureChrome(of: window)
         launcherWindow = window
-        window.makeKeyAndOrderFront(nil)
+        model.registerLauncherWindow(window)
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        window.level = .normal
         window.orderFrontRegardless()
-        NSApp.activate()
-        model.maximizeLauncherWindow()
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        initialRevealTask = Task { @MainActor [weak self, weak window] in
+            await Task.yield()
+            await Task.yield()
+            do {
+                try await Task.sleep(for: .milliseconds(34))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self, let window else { return }
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            window.ignoresMouseEvents = false
+            self.initialRevealTask = nil
+            self.model.markInitialWindowFrameReady()
+            self.model.maximizeLauncherWindow()
+        }
     }
 }

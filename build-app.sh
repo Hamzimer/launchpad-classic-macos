@@ -14,7 +14,7 @@ if [[ ! -x "$BIN" ]]; then
   echo "Build failed before producing an executable (status $BUILD_STATUS)." >&2
   exit "$BUILD_STATUS"
 fi
-APP="dist/LauncherX.app"
+APP="dist/Launchpad Classic.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/LauncherX"
 cp Info.plist "$APP/Contents/Info.plist"

@@ -13,6 +13,7 @@ struct LauncherQualityTests {
     static func main() async {
         do {
             try invalidSavedPreferencesAreSanitized()
+            try freshInstallUsesDesktopWallpaper()
             try searchFiltersApplicationsAndResetsPaging()
             try duplicateSavedGroupsAndPathsAreSanitized()
             try duplicateRuntimeOrderDoesNotCrashOrLoseEntries()
@@ -29,9 +30,15 @@ struct LauncherQualityTests {
             try folderGridMetricsNeverOverflowTheirPanel()
             try pageWindowLimitsRenderedPages()
             try scannerGracefullyHandlesMissingRoots()
+            try preparedModelRunsInitialReadinessHandler()
+            try await initialPresentationPreloadsInstalledApplications()
+            try await applicationMonitorDetectsDirectoryChanges()
+            try memoryPolicyKeepsCachesBounded()
             try await imageLoadersHandleMissingFiles()
+            try await hiddenLauncherRetainsPreparedIconsForReopening()
+            try applicationUpdatePreservesUserLayout()
             try await fileOperatorRejectsUnsafeDeleteLocation()
-            print("Launcher quality tests passed (19/19)")
+            print("Launcher quality tests passed (26/26)")
         } catch {
             FileHandle.standardError.write(Data("Launcher quality tests failed: \(error)\n".utf8))
             Darwin.exit(EXIT_FAILURE)
@@ -56,6 +63,21 @@ struct LauncherQualityTests {
         try require(model.iconSize == 92, "Non-finite icon size was not sanitized")
         try require(model.background == "wallpaper", "Invalid background was not sanitized")
         try require(model.rootOrder == ["app:/Applications/Alpha.app"], "Invalid root order was not sanitized")
+    }
+
+    private static func freshInstallUsesDesktopWallpaper() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+
+        try require(
+            model.background == LauncherModel.defaultBackground,
+            "A fresh install did not default to the Desktop wallpaper"
+        )
+        try require(
+            LauncherModel.defaultBackground == "wallpaper",
+            "The default background no longer represents the Desktop wallpaper"
+        )
     }
 
     private static func searchFiltersApplicationsAndResetsPaging() throws {
@@ -350,6 +372,11 @@ struct LauncherQualityTests {
         try require(window.canBecomeMain, "The full-screen launcher window cannot become the main window")
         try require(window.styleMask == .borderless, "The launcher window unexpectedly displays title-bar chrome")
         try require(window.toolbar == nil, "The launcher window unexpectedly displays a toolbar")
+        try require(window.isOpaque, "The launcher window can expose an unpainted frame during startup")
+        try require(
+            window.backgroundColor == LauncherWindowPresentation.initialBackgroundColor,
+            "The launcher window does not have a stable startup background"
+        )
     }
 
     private static func dismissMotionMatchesReferenceApplication() throws {
@@ -548,6 +575,103 @@ struct LauncherQualityTests {
         try require(result.accessibleRootCount == 0, "Missing scan root was marked accessible")
     }
 
+    private static func preparedModelRunsInitialReadinessHandler() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+        var callbackCount = 0
+
+        model.whenInitialContentIsReady {
+            callbackCount += 1
+        }
+
+        try require(model.isInitialContentReady, "A preconfigured model was not ready for presentation")
+        try require(callbackCount == 1, "A ready model did not present exactly once")
+    }
+
+    private static func initialPresentationPreloadsInstalledApplications() async throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: true)
+        defer { model.shutdown() }
+        var callbackCount = 0
+        model.whenInitialContentIsReady {
+            callbackCount += 1
+        }
+
+        for _ in 0..<400 where !model.isInitialContentReady {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        try require(model.isInitialContentReady, "Initial launcher content did not finish preloading")
+        try require(!model.apps.isEmpty, "Initial launcher preparation did not discover installed applications")
+        try require(callbackCount == 1, "Initial launcher readiness was delivered more than once")
+    }
+
+    private static func applicationMonitorDetectsDirectoryChanges() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("launcherx-monitor-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            do {
+                try FileManager.default.removeItem(at: root)
+            } catch {
+                FileHandle.standardError.write(
+                    Data("Could not remove application monitor test directory: \(error.localizedDescription)\n".utf8)
+                )
+            }
+        }
+
+        var notificationCount = 0
+        var detectedApps: [AppItem] = []
+        let monitor = LauncherApplicationMonitor(
+            roots: [root, root],
+            debounceInterval: .milliseconds(50)
+        ) {
+            notificationCount += 1
+            detectedApps = LauncherFileScanner.scanApplications(in: [root]).apps
+        }
+        monitor.start()
+        defer { monitor.stop() }
+
+        try require(monitor.monitoredRootCount == 1, "Duplicate application roots were monitored more than once")
+        let installedApp = root.appendingPathComponent("Newly Installed.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: installedApp, withIntermediateDirectories: true)
+
+        for _ in 0..<40 where notificationCount == 0 {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try require(notificationCount == 1, "A newly installed application did not trigger an automatic refresh")
+        try require(
+            detectedApps.contains(where: { $0.url.standardizedFileURL == installedApp.standardizedFileURL }),
+            "A newly installed application was not discovered by the automatic refresh"
+        )
+
+        notificationCount = 0
+        try FileManager.default.removeItem(at: installedApp)
+        for _ in 0..<40 where notificationCount == 0 {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try require(notificationCount == 1, "Removing an application did not trigger an automatic refresh")
+        try require(detectedApps.isEmpty, "A removed application remained in the automatic refresh result")
+    }
+
+    private static func memoryPolicyKeepsCachesBounded() throws {
+        try require(LauncherMemoryPolicy.iconPixelSize <= 256, "Application icons use more pixels than required")
+        try require(
+            LauncherMemoryPolicy.iconLogicalPointSize * 2 == LauncherMemoryPolicy.iconPixelSize,
+            "Application icons are not represented at Retina density"
+        )
+        try require(LauncherMemoryPolicy.iconDataCacheCount <= 48, "Too many encoded icons can remain cached")
+        try require(LauncherMemoryPolicy.iconImageCacheCount <= 48, "Too many decoded icons can remain cached")
+        try require(LauncherMemoryPolicy.backgroundCacheCount == 1, "Multiple full-size backgrounds can remain cached")
+        try require(LauncherMemoryPolicy.backgroundMaximumPixelSize <= 3_072, "Background decoding is insufficiently bounded")
+        try require(
+            LauncherMemoryPolicy.maximumPersistentCacheCost <= 80 * 1_024 * 1_024,
+            "Persistent image caches can exceed the memory budget"
+        )
+    }
+
     private static func imageLoadersHandleMissingFiles() async throws {
         let missingApp = URL(fileURLWithPath: "/tmp/launcherx-missing-\(UUID().uuidString).app")
         guard let missingIconData = await LauncherIconLoader().iconData(for: missingApp),
@@ -555,7 +679,24 @@ struct LauncherQualityTests {
             throw QualityTestFailure(description: "Missing app path did not return safe icon data")
         }
         try require(icon.size.width > 0 && icon.size.height > 0, "Missing app path did not return a safe placeholder icon")
-        try require(icon.size == NSSize(width: 512, height: 512), "The app icon was not normalized for stable rendering")
+        let expectedIconSize = NSSize(
+            width: LauncherMemoryPolicy.iconLogicalPointSize,
+            height: LauncherMemoryPolicy.iconLogicalPointSize
+        )
+        try require(icon.size == expectedIconSize, "The app icon was not normalized for stable rendering")
+        var missingIconRect = NSRect(origin: .zero, size: icon.size)
+        guard let missingIconCGImage = icon.cgImage(
+            forProposedRect: &missingIconRect,
+            context: nil,
+            hints: nil
+        ) else {
+            throw QualityTestFailure(description: "The normalized placeholder icon had no pixel data")
+        }
+        try require(
+            missingIconCGImage.width == LauncherMemoryPolicy.iconPixelSize
+                && missingIconCGImage.height == LauncherMemoryPolicy.iconPixelSize,
+            "The normalized placeholder icon lost its Retina pixel density"
+        )
 
         let fakeApp = FileManager.default.temporaryDirectory
             .appendingPathComponent("launcherx-icon-\(UUID().uuidString).app", isDirectory: true)
@@ -589,7 +730,7 @@ struct LauncherQualityTests {
             throw QualityTestFailure(description: "The bundle icon data could not be decoded")
         }
         try require(
-            bundleIcon.size == NSSize(width: 512, height: 512),
+            bundleIcon.size == expectedIconSize,
             "A bundle icon was not normalized for stable rendering"
         )
         var proposedRect = NSRect(origin: .zero, size: bundleIcon.size)
@@ -601,6 +742,11 @@ struct LauncherQualityTests {
         let bundlePixels = bundleCGImage.dataProvider?.data as Data? else {
             throw QualityTestFailure(description: "The normalized bundle icon had no pixel data")
         }
+        try require(
+            bundleCGImage.width == LauncherMemoryPolicy.iconPixelSize
+                && bundleCGImage.height == LauncherMemoryPolicy.iconPixelSize,
+            "The normalized bundle icon lost its Retina pixel density"
+        )
         try require(
             bundlePixels.contains(where: { $0 != 0 }),
             "The normalized bundle icon was transparent"
@@ -626,6 +772,55 @@ struct LauncherQualityTests {
               wallpaperData.makeImage() != nil else {
             throw QualityTestFailure(description: "Background image data could not be reconstructed on MainActor")
         }
+    }
+
+    private static func hiddenLauncherRetainsPreparedIconsForReopening() async throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+        defer { model.shutdown() }
+        let app = AppItem(
+            url: URL(fileURLWithPath: "/tmp/launcherx-reopen-\(UUID().uuidString).app")
+        )
+
+        _ = await model.loadIcon(for: app)
+        try require(model.cachedIcon(for: app) != nil, "The reopening test icon was not prepared")
+        model.handleApplicationDidHide()
+        try require(
+            model.cachedIcon(for: app) != nil,
+            "Hiding the launcher discarded the icon required for an immediate reopen"
+        )
+    }
+
+    private static func applicationUpdatePreservesUserLayout() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        let first = AppItem(url: URL(fileURLWithPath: "/Applications/First.app"))
+        let second = AppItem(url: URL(fileURLWithPath: "/Applications/Second.app"))
+        let third = AppItem(url: URL(fileURLWithPath: "/Applications/Third.app"))
+        let group = AppGroup(
+            name: "Projects",
+            appPaths: [first.url.path, second.url.path]
+        )
+
+        let previousVersion = LauncherModel(defaults: context.defaults, autoScan: false)
+        previousVersion.apps = [first, second, third]
+        previousVersion.groups = [group]
+        previousVersion.rootOrder = ["group:\(group.id.uuidString)", third.id]
+        previousVersion.language = "ja"
+        previousVersion.background = "ocean"
+        previousVersion.setIconSize(80)
+
+        let updatedVersion = LauncherModel(defaults: context.defaults, autoScan: false)
+        updatedVersion.apps = [first, second, third]
+        try require(updatedVersion.groups == [group], "An application update lost the user's folders")
+        try require(
+            updatedVersion.rootOrder == ["group:\(group.id.uuidString)", third.id],
+            "An application update lost the user's launcher order"
+        )
+        try require(updatedVersion.language == "ja", "An application update lost the selected language")
+        try require(updatedVersion.background == "ocean", "An application update lost the selected background")
+        try require(updatedVersion.iconSize == 80, "An application update lost the selected icon size")
     }
 
     private static func makeTestIconData() -> Data? {

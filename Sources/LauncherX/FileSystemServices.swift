@@ -1,6 +1,23 @@
 import Foundation
 import AppKit
 import ImageIO
+import Darwin
+
+enum LauncherMemoryPolicy {
+    static let iconPixelSize = 256
+    static let iconLogicalPointSize = 128
+    static let iconDataCacheCount = 48
+    static let iconDataCacheCost = 12 * 1_024 * 1_024
+    static let iconImageCacheCount = 48
+    static let iconImageCacheCost = 16 * 1_024 * 1_024
+    static let backgroundMaximumPixelSize = 3_072
+    static let backgroundCacheCount = 1
+    static let backgroundCacheCost = 48 * 1_024 * 1_024
+
+    static let maximumPersistentCacheCost = iconDataCacheCost
+        + iconImageCacheCost
+        + backgroundCacheCost
+}
 
 struct AppScanResult: Sendable {
     let apps: [AppItem]
@@ -13,13 +30,16 @@ enum FileOperationOutcome: Sendable {
 }
 
 actor LauncherFileScanner {
-    func scanApplications(homeDirectory: URL) -> AppScanResult {
-        let roots = [
+    nonisolated static func applicationRoots(homeDirectory: URL) -> [URL] {
+        [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             URL(fileURLWithPath: "/System/Applications", isDirectory: true),
             homeDirectory.appendingPathComponent("Applications", isDirectory: true)
         ]
-        return Self.scanApplications(in: roots)
+    }
+
+    func scanApplications(homeDirectory: URL) -> AppScanResult {
+        Self.scanApplications(in: Self.applicationRoots(homeDirectory: homeDirectory))
     }
 
     func scanWallpapers() -> [WallpaperItem] {
@@ -108,6 +128,101 @@ actor LauncherFileScanner {
     }
 }
 
+@MainActor
+final class LauncherApplicationMonitor {
+    private let roots: [URL]
+    private let debounceInterval: Duration
+    private let onChange: @MainActor () -> Void
+    private let eventQueue = DispatchQueue(
+        label: "jp.local.launchpadclassic.application-monitor",
+        qos: .utility
+    )
+    private var sources: [DispatchSourceFileSystemObject] = []
+    private var debounceTask: Task<Void, Never>?
+
+    private(set) var monitoredRootCount = 0
+
+    init(
+        roots: [URL],
+        debounceInterval: Duration = .seconds(1.5),
+        onChange: @escaping @MainActor () -> Void
+    ) {
+        self.roots = roots
+        self.debounceInterval = debounceInterval
+        self.onChange = onChange
+    }
+
+    func start() {
+        stopSources()
+        for root in Self.monitorableRoots(from: roots) {
+            let descriptor = Darwin.open(root.path, O_EVTONLY)
+            guard descriptor >= 0 else { continue }
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: descriptor,
+                eventMask: [.write, .rename, .delete, .attrib, .extend, .link, .revoke],
+                queue: eventQueue
+            )
+            source.setEventHandler { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.scheduleChangeNotification()
+                }
+            }
+            source.setCancelHandler {
+                Darwin.close(descriptor)
+            }
+            sources.append(source)
+            source.resume()
+        }
+        monitoredRootCount = sources.count
+    }
+
+    func stop() {
+        debounceTask?.cancel()
+        debounceTask = nil
+        stopSources()
+    }
+
+    nonisolated static func monitorableRoots(from roots: [URL]) -> [URL] {
+        let fileManager = FileManager()
+        var seen: Set<String> = []
+        var result: [URL] = []
+        for root in roots.prefix(16) {
+            let standardizedURL = root.standardizedFileURL
+            let path = standardizedURL.path
+            var isDirectory: ObjCBool = false
+            guard standardizedURL.isFileURL,
+                  path.count <= 4_096,
+                  !path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+                  fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  seen.insert(path).inserted else { continue }
+            result.append(standardizedURL)
+        }
+        return result
+    }
+
+    private func scheduleChangeNotification() {
+        debounceTask?.cancel()
+        let interval = debounceInterval
+        debounceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: interval)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.debounceTask = nil
+            self.onChange()
+        }
+    }
+
+    private func stopSources() {
+        for source in sources { source.cancel() }
+        sources.removeAll(keepingCapacity: false)
+        monitoredRootCount = 0
+    }
+}
+
 actor LauncherFileOperator {
     func moveApplicationToTrash(_ url: URL, homeDirectory: URL) -> FileOperationOutcome {
         let fileManager = FileManager()
@@ -139,11 +254,11 @@ actor LauncherFileOperator {
 }
 
 actor LauncherIconLoader {
-    private static let renderedPixelSize = 512
+    private static let renderedPixelSize = LauncherMemoryPolicy.iconPixelSize
     private let cache: NSCache<NSString, NSData> = {
         let cache = NSCache<NSString, NSData>()
-        cache.countLimit = 96
-        cache.totalCostLimit = 64 * 1_024 * 1_024
+        cache.countLimit = LauncherMemoryPolicy.iconDataCacheCount
+        cache.totalCostLimit = LauncherMemoryPolicy.iconDataCacheCost
         return cache
     }()
 
@@ -162,6 +277,10 @@ actor LauncherIconLoader {
         guard !Task.isCancelled, let iconData else { return nil }
         cache.setObject(iconData as NSData, forKey: key, cost: iconData.count)
         return iconData
+    }
+
+    func removeAllCachedIcons() {
+        cache.removeAllObjects()
     }
 
     private nonisolated static func bundleIcon(for appURL: URL) -> NSImage? {
@@ -253,6 +372,8 @@ actor LauncherIconLoader {
         ) else { return nil }
 
         context.interpolationQuality = .high
+        context.setAllowsAntialiasing(true)
+        context.setShouldAntialias(true)
         context.clear(CGRect(x: 0, y: 0, width: renderedPixelSize, height: renderedPixelSize))
         context.draw(
             sourceImage,
@@ -261,7 +382,12 @@ actor LauncherIconLoader {
         guard let renderedImage = context.makeImage() else { return nil }
         guard let pixelData = renderedImage.dataProvider?.data,
               (pixelData as Data).contains(where: { $0 != 0 }) else { return nil }
-        return NSBitmapImageRep(cgImage: renderedImage).representation(
+        let bitmap = NSBitmapImageRep(cgImage: renderedImage)
+        bitmap.size = NSSize(
+            width: LauncherMemoryPolicy.iconLogicalPointSize,
+            height: LauncherMemoryPolicy.iconLogicalPointSize
+        )
+        return bitmap.representation(
             using: .png,
             properties: [:]
         )
@@ -306,8 +432,8 @@ struct LauncherDecodedImage: Sendable {
 }
 
 actor LauncherBackgroundImageLoader {
-    private static let maximumCachedImages = 8
-    private static let maximumCacheCost = 256 * 1_024 * 1_024
+    private static let maximumCachedImages = LauncherMemoryPolicy.backgroundCacheCount
+    private static let maximumCacheCost = LauncherMemoryPolicy.backgroundCacheCost
     private var cache: [String: LauncherDecodedImage] = [:]
     private var cacheOrder: [String] = []
     private var cacheCost = 0
@@ -323,8 +449,8 @@ actor LauncherBackgroundImageLoader {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 4_096,
-            kCGImageSourceShouldCacheImmediately: true
+            kCGImageSourceThumbnailMaxPixelSize: LauncherMemoryPolicy.backgroundMaximumPixelSize,
+            kCGImageSourceShouldCacheImmediately: false
         ]
         guard let source = CGImageSourceCreateWithURL(standardizedURL as CFURL, nil),
               let cgImage = CGImageSourceCreateThumbnailAtIndex(
@@ -337,6 +463,12 @@ actor LauncherBackgroundImageLoader {
               !Task.isCancelled else { return nil }
         store(decodedImage, forKey: key)
         return decodedImage
+    }
+
+    func removeAllCachedImages() {
+        cache.removeAll(keepingCapacity: false)
+        cacheOrder.removeAll(keepingCapacity: false)
+        cacheCost = 0
     }
 
     private func cachedImage(forKey key: String) -> LauncherDecodedImage? {
