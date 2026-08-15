@@ -26,6 +26,7 @@ struct LauncherQualityTests {
             try pageNavigationHandlesIntegerBoundaries()
             try modalUIBlocksBackgroundPageNavigation()
             try launcherWindowAcceptsKeyboardFocus()
+            try quitShortcutRequiresCommandQ()
             try dismissMotionMatchesReferenceApplication()
             try referenceIconSizingMatchesAttachedApp()
             try rootGridUsesAvailableScreenSpace()
@@ -40,7 +41,7 @@ struct LauncherQualityTests {
             try await hiddenLauncherRetainsPreparedIconsForReopening()
             try applicationUpdatePreservesUserLayout()
             try await fileOperatorRejectsUnsafeDeleteLocation()
-            print("Launcher quality tests passed (28/28)")
+            print("Launcher quality tests passed (29/29)")
         } catch {
             FileHandle.standardError.write(Data("Launcher quality tests failed: \(error)\n".utf8))
             Darwin.exit(EXIT_FAILURE)
@@ -417,11 +418,6 @@ struct LauncherQualityTests {
         let model = LauncherModel(defaults: context.defaults, autoScan: false)
         model.setPageCount(3)
 
-        model.showSettings = true
-        model.navigateVisiblePages(by: 1)
-        try require(model.currentPage == 0, "The page moved behind the Settings sheet")
-        model.showSettings = false
-
         model.showLauncherSettings = true
         model.navigateVisiblePages(by: 1)
         try require(model.currentPage == 0, "The page moved behind the launcher settings popover")
@@ -458,6 +454,28 @@ struct LauncherQualityTests {
         try require(
             window.backgroundColor == LauncherWindowPresentation.initialBackgroundColor,
             "The launcher window does not have a stable startup background"
+        )
+    }
+
+    private static func quitShortcutRequiresCommandQ() throws {
+        try require(
+            LauncherKeyboardCommand.isQuit(characters: "q", modifierFlags: .command),
+            "Command-Q was not recognized as the quit shortcut"
+        )
+        try require(
+            LauncherKeyboardCommand.isQuit(characters: "Q", modifierFlags: .command),
+            "Uppercase Command-Q was not recognized as the quit shortcut"
+        )
+        try require(
+            !LauncherKeyboardCommand.isQuit(characters: "q", modifierFlags: []),
+            "Plain Q unexpectedly triggered the quit shortcut"
+        )
+        try require(
+            !LauncherKeyboardCommand.isQuit(
+                characters: "q",
+                modifierFlags: [.command, .shift]
+            ),
+            "Command-Shift-Q unexpectedly triggered the quit shortcut"
         )
     }
 

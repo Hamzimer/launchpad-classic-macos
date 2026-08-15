@@ -49,7 +49,6 @@ struct ContentView: View {
         .ignoresSafeArea()
         .allowsHitTesting(!model.isDismissing)
         .foregroundStyle(model.background == "light" ? Color.black : Color.white)
-        .sheet(isPresented: $model.showSettings) { SettingsView().environmentObject(model) }
         .confirmationDialog(model.text(
             "Delete this application?",
             "このアプリケーションを削除しますか？",
@@ -143,16 +142,6 @@ struct LauncherSettingsPopover: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Button {
-                    model.showLauncherSettings = false
-                    model.showSettings = true
-                } label: {
-                    actionRow(model.text("Settings…", "設定…", "設定…"), systemImage: "gearshape")
-                }
-                .buttonStyle(.plain)
-
-                Divider()
-
                 sectionHeader(model.text("Display", "表示", "顯示"), systemImage: "rectangle.grid.3x2")
                 HStack(spacing: 8) {
                     sizeButton(72, en: "Small", ja: "小", zhHant: "小")
@@ -201,26 +190,42 @@ struct LauncherSettingsPopover: View {
                     }
                 }
 
+                Divider()
+
+                sectionHeader(model.text("Language", "言語", "語言"), systemImage: "globe")
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    languageButton(
+                        "system",
+                        title: model.text("System", "システム", "系統")
+                    )
+                    languageButton("en", title: "English")
+                    languageButton("ja", title: "日本語")
+                    languageButton("zh-Hant", title: "繁體中文")
+                }
+
+                Divider()
+
                 Button {
                     NSApp.terminate(nil)
                 } label: {
                     actionRow(
                         model.text("Quit Launchpad Classic", "Launchpad Classicを終了", "結束 Launchpad Classic"),
                         systemImage: "power",
-                        color: .red
+                        color: .secondary
                     )
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut("q", modifiers: .command)
             }
             .padding(16)
         }
-        .frame(width: 320, height: min(510, preferredHeight))
+        .frame(width: 320, height: min(570, preferredHeight))
         .background(Color(nsColor: .windowBackgroundColor))
         .foregroundStyle(Color.primary)
     }
 
     private var preferredHeight: CGFloat {
-        model.wallpapers.isEmpty ? 440 : 510
+        model.wallpapers.isEmpty ? 500 : 570
     }
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
@@ -255,6 +260,15 @@ struct LauncherSettingsPopover: View {
             model.background = value
         } label: {
             selectionTile(model.text(en, ja, zhHant), selected: model.background == value)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func languageButton(_ value: String, title: String) -> some View {
+        Button {
+            model.language = value
+        } label: {
+            selectionTile(title, selected: model.language == value)
         }
         .buttonStyle(.plain)
     }
@@ -1171,37 +1185,6 @@ struct LaunchpadBackground: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-    }
-}
-
-struct SettingsView: View {
-    @EnvironmentObject var model: LauncherModel
-    @Environment(\.dismiss) var dismiss
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text(model.text("Settings", "設定", "設定")).font(.title2.bold())
-                Spacer()
-                Button(model.text("Done", "完了", "完成")) { dismiss() }
-            }
-            Form {
-                Picker(model.text("Language", "言語", "語言"), selection: $model.language) {
-                    Text(model.text("System", "システム", "系統")).tag("system")
-                    Text("English").tag("en")
-                    Text("日本語").tag("ja")
-                    Text("繁體中文").tag("zh-Hant")
-                }
-                HStack {
-                    Text(model.text("Display size", "表示サイズ", "顯示大小"))
-                    Slider(value: $model.iconSize, in: 64...112, step: 4)
-                    Text("\(Int(model.iconSize))")
-                }
-            }
-        }
-        .padding(28)
-        .frame(width: 560, height: 220)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .foregroundStyle(Color.primary)
     }
 }
 

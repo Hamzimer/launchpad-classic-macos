@@ -92,6 +92,16 @@ enum LaunchpadDismissMotion {
     }
 }
 
+enum LauncherKeyboardCommand {
+    nonisolated static func isQuit(
+        characters: String?,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> Bool {
+        let relevantModifiers = modifierFlags.intersection([.command, .option, .control, .shift])
+        return relevantModifiers == .command && characters?.lowercased() == "q"
+    }
+}
+
 @MainActor
 final class LauncherWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -254,7 +264,6 @@ struct RootGridMetrics: Equatable, Sendable {
         if oldValue != search { currentPage = 0 }
     } }
     @Published var showLauncherSettings = false
-    @Published var showSettings = false
     @Published var openGroupID: UUID?
     @Published var currentPage = 0
     @Published var pageCount = 1
@@ -541,7 +550,7 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func handleApplicationDidResignActive() {
-        guard !showSettings, !showLauncherSettings else { return }
+        guard !showLauncherSettings else { return }
         dismissLauncher(animated: false)
     }
 
@@ -629,8 +638,7 @@ struct RootGridMetrics: Equatable, Sendable {
     }
 
     func navigateVisiblePages(by delta: Int) {
-        guard !showSettings, !showLauncherSettings,
-              pendingDeleteApp == nil, errorMessage == nil else { return }
+        guard !showLauncherSettings, pendingDeleteApp == nil, errorMessage == nil else { return }
         if openGroupID == nil { changePage(by: delta) }
         else {
             let addition = folderPage.addingReportingOverflow(delta)
@@ -838,7 +846,6 @@ struct RootGridMetrics: Equatable, Sendable {
         for childWindow in window.childWindows ?? [] {
             childWindow.close()
         }
-        showSettings = false
         showLauncherSettings = false
         pendingDeleteApp = nil
         closeFolder()

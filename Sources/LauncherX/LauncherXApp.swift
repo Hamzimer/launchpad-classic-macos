@@ -19,10 +19,12 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private var launcherWindow: LauncherWindow?
     private var isWaitingForInitialContent = false
     private var initialRevealTask: Task<Void, Never>?
+    private var keyDownMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.accessory)
+        installKeyboardMonitor()
         requestLauncherPresentation()
     }
 
@@ -37,7 +39,23 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         initialRevealTask?.cancel()
         initialRevealTask = nil
+        if let keyDownMonitor {
+            NSEvent.removeMonitor(keyDownMonitor)
+            self.keyDownMonitor = nil
+        }
         model.shutdown()
+    }
+
+    private func installKeyboardMonitor() {
+        guard keyDownMonitor == nil else { return }
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard LauncherKeyboardCommand.isQuit(
+                characters: event.charactersIgnoringModifiers,
+                modifierFlags: event.modifierFlags
+            ) else { return event }
+            Task { @MainActor in NSApp.terminate(nil) }
+            return nil
+        }
     }
 
     private func requestLauncherPresentation() {
