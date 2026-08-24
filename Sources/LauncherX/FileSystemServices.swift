@@ -34,6 +34,8 @@ actor LauncherFileScanner {
         [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/System/Library/CoreServices/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications", isDirectory: true),
             homeDirectory.appendingPathComponent("Applications", isDirectory: true)
         ]
     }
@@ -52,37 +54,54 @@ actor LauncherFileScanner {
 
     nonisolated static func scanApplications(in roots: [URL]) -> AppScanResult {
         let fileManager = FileManager()
-        let resourceKeys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+        let resourceKeys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey]
+        let maximumDirectoriesPerRoot = 20_000
         var accessibleRootCount = 0
         var found: [String: AppItem] = [:]
 
-        for root in roots {
+        for root in roots.prefix(64) {
             guard !Task.isCancelled, root.isFileURL,
-                  fileManager.fileExists(atPath: root.path),
-                  let enumerator = fileManager.enumerator(
-                    at: root,
-                    includingPropertiesForKeys: resourceKeys,
-                    options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                    errorHandler: { _, _ in true }
-                  ) else { continue }
+                  fileManager.fileExists(atPath: root.path) else { continue }
 
-            accessibleRootCount += 1
-            for case let url as URL in enumerator {
+            var pendingDirectories = [root.standardizedFileURL]
+            var visitedDirectories: Set<String> = []
+            var didReadRoot = false
+
+            while let directory = pendingDirectories.popLast(),
+                  visitedDirectories.count < maximumDirectoriesPerRoot {
                 guard !Task.isCancelled else {
                     return AppScanResult(apps: [], accessibleRootCount: accessibleRootCount)
                 }
-                guard isSafeFileURL(url, extensions: ["app"]) else { continue }
+                let resolvedDirectory = directory.resolvingSymlinksInPath()
+                guard visitedDirectories.insert(resolvedDirectory.path).inserted,
+                      let children = try? fileManager.contentsOfDirectory(
+                        at: directory,
+                        includingPropertiesForKeys: Array(resourceKeys),
+                        options: [.skipsHiddenFiles]
+                      ) else { continue }
 
-                let bundle = Bundle(url: url)
-                let category = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
-                let receipt = url.appendingPathComponent("Contents/_MASReceipt/receipt").path
-                let isSystemApp = url.standardizedFileURL.path.hasPrefix("/System/")
-                let deletable = !isSystemApp && fileManager.fileExists(atPath: receipt)
-                found[url.standardizedFileURL.path] = AppItem(
-                    url: url.standardizedFileURL,
-                    category: category,
-                    isDeletable: deletable
-                )
+                if !didReadRoot {
+                    accessibleRootCount += 1
+                    didReadRoot = true
+                }
+
+                for child in children {
+                    guard !Task.isCancelled else {
+                        return AppScanResult(apps: [], accessibleRootCount: accessibleRootCount)
+                    }
+                    if isSafeFileURL(child, extensions: ["app"]) {
+                        addApplication(at: child, fileManager: fileManager, to: &found)
+                        continue
+                    }
+
+                    guard child.path.count <= 4_096,
+                          !child.path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+                          let values = try? child.resourceValues(forKeys: resourceKeys),
+                          values.isDirectory == true,
+                          values.isPackage != true,
+                          values.isSymbolicLink != true else { continue }
+                    pendingDirectories.append(child)
+                }
             }
         }
 
@@ -90,6 +109,36 @@ actor LauncherFileScanner {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
         return AppScanResult(apps: apps, accessibleRootCount: accessibleRootCount)
+    }
+
+    nonisolated private static func addApplication(
+        at url: URL,
+        fileManager: FileManager,
+        to found: inout [String: AppItem]
+    ) {
+        let standardizedURL = url.standardizedFileURL
+        let resolvedURL = standardizedURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard resolvedURL.isFileURL,
+              resolvedURL.path.count <= 4_096,
+              !resolvedURL.path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              resolvedURL.pathExtension.lowercased() == "app",
+              fileManager.fileExists(atPath: resolvedURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+
+        let deduplicationPath = resolvedURL.path
+        guard found[deduplicationPath] == nil else { return }
+        let bundle = Bundle(url: standardizedURL)
+        let category = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
+        let receipt = standardizedURL.appendingPathComponent("Contents/_MASReceipt/receipt").path
+        let isSystemApp = resolvedURL.path.hasPrefix("/System/")
+        let deletable = !isSystemApp && fileManager.fileExists(atPath: receipt)
+        found[deduplicationPath] = AppItem(
+            url: standardizedURL,
+            bundleIdentifier: bundle?.bundleIdentifier,
+            category: category,
+            isDeletable: deletable
+        )
     }
 
     nonisolated static func scanWallpapers(in roots: [URL]) -> [WallpaperItem] {

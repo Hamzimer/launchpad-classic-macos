@@ -205,6 +205,20 @@ struct LauncherSettingsPopover: View {
 
                 Divider()
 
+                sectionHeader(model.text("Updates", "アップデート", "更新"), systemImage: "arrow.triangle.2.circlepath")
+                Button {
+                    NotificationCenter.default.post(name: .launcherCheckForUpdates, object: nil)
+                } label: {
+                    actionRow(
+                        model.text("Check for Updates…", "アップデートを確認…", "檢查更新…"),
+                        systemImage: "arrow.down.circle",
+                        color: .secondary
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider()
+
                 Button {
                     NSApp.terminate(nil)
                 } label: {

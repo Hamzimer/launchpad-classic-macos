@@ -15,9 +15,15 @@ if [[ ! -x "$BIN" ]]; then
   exit "$BUILD_STATUS"
 fi
 APP="dist/Launchpad Classic.app"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+SPARKLE_FRAMEWORK="$PWD/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
+  echo "The verified Sparkle framework is missing." >&2
+  exit 1
+fi
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/LauncherX"
 cp Info.plist "$APP/Contents/Info.plist"
+ditto --norsrc --noqtn "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
 MASTER_ICON="$PWD/.build/AppIcon-1024.png"
 ICON_GENERATOR="$PWD/.build/GenerateAppIcon"
 swiftc Tools/GenerateAppIcon.swift -o "$ICON_GENERATOR" -framework AppKit

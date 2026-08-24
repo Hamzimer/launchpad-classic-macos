@@ -33,6 +33,9 @@ struct LauncherQualityTests {
             try folderGridMetricsNeverOverflowTheirPanel()
             try pageWindowLimitsRenderedPages()
             try scannerGracefullyHandlesMissingRoots()
+            try scannerFindsApplicationLinksWithoutDuplicates()
+            try sequoiaUtilitiesAreGroupedWithoutOverwritingUserFolders()
+            try automaticUpdateConfigurationIsSecureAndEnabled()
             try preparedModelRunsInitialReadinessHandler()
             try await initialPresentationPreloadsInstalledApplications()
             try await applicationMonitorDetectsDirectoryChanges()
@@ -41,7 +44,7 @@ struct LauncherQualityTests {
             try await hiddenLauncherRetainsPreparedIconsForReopening()
             try applicationUpdatePreservesUserLayout()
             try await fileOperatorRejectsUnsafeDeleteLocation()
-            print("Launcher quality tests passed (29/29)")
+            print("Launcher quality tests passed (32/32)")
         } catch {
             FileHandle.standardError.write(Data("Launcher quality tests failed: \(error)\n".utf8))
             Darwin.exit(EXIT_FAILURE)
@@ -673,6 +676,170 @@ struct LauncherQualityTests {
         let result = LauncherFileScanner.scanApplications(in: [missingRoot])
         try require(result.apps.isEmpty, "Missing scan root produced applications")
         try require(result.accessibleRootCount == 0, "Missing scan root was marked accessible")
+    }
+
+    private static func scannerFindsApplicationLinksWithoutDuplicates() throws {
+        let fileManager = FileManager.default
+        let temporaryRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("launcherx-symlink-scan-\(UUID().uuidString)", isDirectory: true)
+        let applicationsRoot = temporaryRoot.appendingPathComponent("Applications", isDirectory: true)
+        let utilitiesRoot = applicationsRoot.appendingPathComponent("Utilities", isDirectory: true)
+        let systemRoot = temporaryRoot.appendingPathComponent("SystemApps", isDirectory: true)
+        let realSafari = systemRoot.appendingPathComponent("Safari.app", isDirectory: true)
+        let realFeedback = systemRoot.appendingPathComponent("Feedback Assistant.app", isDirectory: true)
+        let linkedSafari = applicationsRoot.appendingPathComponent("Safari.app", isDirectory: true)
+        let linkedFeedback = utilitiesRoot.appendingPathComponent("Feedback Assistant.app", isDirectory: true)
+
+        try fileManager.createDirectory(at: utilitiesRoot, withIntermediateDirectories: true)
+        try createTestApplication(at: realSafari, identifier: "com.example.Safari")
+        try createTestApplication(at: realFeedback, identifier: "com.example.FeedbackAssistant")
+        try fileManager.createSymbolicLink(at: linkedSafari, withDestinationURL: realSafari)
+        try fileManager.createSymbolicLink(at: linkedFeedback, withDestinationURL: realFeedback)
+        defer {
+            do {
+                try fileManager.removeItem(at: temporaryRoot)
+            } catch {
+                FileHandle.standardError.write(
+                    Data("Could not remove scanner test directory: \(error.localizedDescription)\n".utf8)
+                )
+            }
+        }
+
+        let result = LauncherFileScanner.scanApplications(in: [applicationsRoot, systemRoot])
+        let discoveredPaths = Set(result.apps.map { $0.url.standardizedFileURL.path })
+        try require(result.apps.count == 2, "Linked and resolved applications were not deduplicated")
+        try require(
+            discoveredPaths == Set([linkedSafari.standardizedFileURL.path, linkedFeedback.standardizedFileURL.path]),
+            "Top-level or nested symbolic-link applications were not retained as visible launch URLs"
+        )
+        try require(
+            result.apps.allSatisfy { !$0.isDeletable },
+            "Synthetic linked applications were incorrectly made deletable"
+        )
+
+        let standardRoots = LauncherFileScanner.applicationRoots(homeDirectory: fileManager.homeDirectoryForCurrentUser)
+            .map(\.standardizedFileURL.path)
+        try require(
+            standardRoots.contains("/System/Library/CoreServices/Applications"),
+            "CoreServices applications are missing from the standard scan roots"
+        )
+        try require(
+            standardRoots.contains("/System/Cryptexes/App/System/Applications"),
+            "Cryptex applications are missing from the standard scan roots"
+        )
+
+        let installedSafari = URL(fileURLWithPath: "/Applications/Safari.app", isDirectory: true)
+        if fileManager.fileExists(atPath: installedSafari.path) {
+            let installedApps = LauncherFileScanner.scanApplications(
+                in: LauncherFileScanner.applicationRoots(
+                    homeDirectory: fileManager.homeDirectoryForCurrentUser
+                )
+            )
+            try require(
+                installedApps.apps.contains(where: {
+                    Bundle(url: $0.url)?.bundleIdentifier == "com.apple.Safari"
+                }),
+                "The installed Safari application was not discovered"
+            )
+        }
+    }
+
+    private static func sequoiaUtilitiesAreGroupedWithoutOverwritingUserFolders() throws {
+        let context = try makeDefaults()
+        defer { context.defaults.removePersistentDomain(forName: context.domain) }
+        context.defaults.set(true, forKey: "launcher.defaultGroups.v1")
+
+        let activityMonitor = AppItem(
+            url: URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"),
+            bundleIdentifier: "com.apple.ActivityMonitor"
+        )
+        let keychainAccess = AppItem(
+            url: URL(fileURLWithPath: "/System/Library/CoreServices/Applications/Keychain Access.app"),
+            bundleIdentifier: "com.apple.keychainaccess"
+        )
+        let thirdPartyUtility = AppItem(
+            url: URL(fileURLWithPath: "/Applications/Utilities/Third Party.app"),
+            bundleIdentifier: "com.example.utility"
+        )
+        let customGroup = AppGroup(name: "Security", appPaths: [keychainAccess.url.path])
+        let model = LauncherModel(defaults: context.defaults, autoScan: false)
+        model.apps = [activityMonitor, keychainAccess, thirdPartyUtility]
+        model.groups = [customGroup]
+
+        model.reconcileSequoiaUtilitiesIfNeeded()
+
+        try require(
+            LaunchpadStandardUtilities.contains(activityMonitor),
+            "A standard Apple utility was not recognized"
+        )
+        try require(
+            LaunchpadStandardUtilities.contains(keychainAccess),
+            "A relocated Sequoia utility was not recognized by bundle identifier"
+        )
+        try require(
+            !LaunchpadStandardUtilities.contains(thirdPartyUtility),
+            "A third-party application was incorrectly classified as a standard utility"
+        )
+        try require(
+            model.groups.first(where: { $0.systemKind == "utilities" })?.appPaths
+                == [activityMonitor.url.path],
+            "The default Utilities folder did not receive the ungrouped standard utility"
+        )
+        try require(
+            model.group(for: customGroup.id)?.appPaths == [keychainAccess.url.path],
+            "The Utilities migration moved an application out of a user folder"
+        )
+
+        model.reconcileSequoiaUtilitiesIfNeeded()
+        try require(
+            model.groups.filter { $0.systemKind == "utilities" }.count == 1,
+            "The Utilities migration was not idempotent"
+        )
+    }
+
+    private static func automaticUpdateConfigurationIsSecureAndEnabled() throws {
+        let infoURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Info.plist")
+        let data = try Data(contentsOf: infoURL, options: [.mappedIfSafe])
+        let object = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        guard let info = object as? [String: Any] else {
+            throw QualityTestFailure(description: "Info.plist is not a dictionary")
+        }
+        guard let feedValue = info["SUFeedURL"] as? String,
+              let feedURL = URL(string: feedValue),
+              feedURL.scheme == "https",
+              feedURL.host == "raw.githubusercontent.com" else {
+            throw QualityTestFailure(description: "The update feed is not a trusted HTTPS GitHub URL")
+        }
+        guard let publicKey = info["SUPublicEDKey"] as? String,
+              let decodedKey = Data(base64Encoded: publicKey),
+              decodedKey.count == 32 else {
+            throw QualityTestFailure(description: "The Sparkle public signing key is invalid")
+        }
+        try require(
+            info["SUEnableAutomaticChecks"] as? Bool == true,
+            "Automatic update checks are disabled"
+        )
+        try require(
+            info["SUAutomaticallyUpdate"] as? Bool == true,
+            "Automatic update installation is disabled"
+        )
+    }
+
+    private static func createTestApplication(at url: URL, identifier: String) throws {
+        let contents = url.appendingPathComponent("Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let info: [String: Any] = [
+            "CFBundleIdentifier": identifier,
+            "CFBundleName": url.deletingPathExtension().lastPathComponent,
+            "CFBundlePackageType": "APPL"
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: info,
+            format: .xml,
+            options: 0
+        )
+        try data.write(to: contents.appendingPathComponent("Info.plist"), options: .atomic)
     }
 
     private static func preparedModelRunsInitialReadinessHandler() throws {

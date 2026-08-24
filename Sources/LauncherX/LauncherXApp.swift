@@ -1,15 +1,16 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
-struct LauncherXApp: App {
-    @NSApplicationDelegateAdaptor(LauncherAppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
+@MainActor
+enum LauncherXApplication {
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = LauncherAppDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) {
+            application.run()
         }
-        .commandsRemoved()
     }
 }
 
@@ -20,12 +21,16 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private var isWaitingForInitialContent = false
     private var initialRevealTask: Task<Void, Never>?
     private var keyDownMonitor: Any?
+    private var automaticUpdateController: AutomaticUpdateController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.accessory)
         installKeyboardMonitor()
         requestLauncherPresentation()
+        let updateController = AutomaticUpdateController()
+        automaticUpdateController = updateController
+        updateController.checkAtLaunch()
     }
 
     func applicationShouldHandleReopen(
@@ -44,6 +49,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
             self.keyDownMonitor = nil
         }
         model.shutdown()
+        automaticUpdateController = nil
     }
 
     private func installKeyboardMonitor() {

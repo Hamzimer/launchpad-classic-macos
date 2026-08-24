@@ -2,12 +2,27 @@ import SwiftUI
 import AppKit
 import QuartzCore
 
+extension Notification.Name {
+    static let launcherCheckForUpdates = Notification.Name(
+        "jp.local.launchpadclassic27.check-for-updates"
+    )
+}
+
 struct AppItem: Identifiable, Hashable, Sendable {
     let url: URL
+    let bundleIdentifier: String?
     let category: String?
     let isDeletable: Bool
-    init(url: URL, category: String? = nil, isDeletable: Bool = false) {
-        self.url = url; self.category = category; self.isDeletable = isDeletable
+    init(
+        url: URL,
+        bundleIdentifier: String? = nil,
+        category: String? = nil,
+        isDeletable: Bool = false
+    ) {
+        self.url = url
+        self.bundleIdentifier = bundleIdentifier
+        self.category = category
+        self.isDeletable = isDeletable
     }
     var id: String { "app:" + url.path }
     var name: String { url.deletingPathExtension().lastPathComponent }
@@ -99,6 +114,25 @@ enum LauncherKeyboardCommand {
     ) -> Bool {
         let relevantModifiers = modifierFlags.intersection([.command, .option, .control, .shift])
         return relevantModifiers == .command && characters?.lowercased() == "q"
+    }
+}
+
+enum LaunchpadStandardUtilities {
+    private static let relocatedUtilityBundleIdentifiers: Set<String> = [
+        "com.apple.archiveutility",
+        "com.apple.bootcampassistant",
+        "com.apple.DirectoryUtility",
+        "com.apple.keychainaccess",
+        "com.apple.wifi.diagnostics"
+    ]
+
+    nonisolated static func contains(_ app: AppItem) -> Bool {
+        let path = app.url.standardizedFileURL.path
+        let isAppleUtilityLocation = path.hasPrefix("/System/Applications/Utilities/")
+            || path.hasPrefix("/Applications/Utilities/")
+        let identifier = app.bundleIdentifier ?? Bundle(url: app.url)?.bundleIdentifier
+        guard let identifier, identifier.hasPrefix("com.apple.") else { return false }
+        return isAppleUtilityLocation || relocatedUtilityBundleIdentifiers.contains(identifier)
     }
 }
 
@@ -302,6 +336,7 @@ struct RootGridMetrics: Equatable, Sendable {
     private let groupsKey = "launcher.groups.v2"
     private let orderKey = "launcher.order.v1"
     private let defaultsKey = "launcher.defaultGroups.v1"
+    private let sequoiaUtilitiesMigrationKey = "launcher.sequoiaUtilities.v1"
     private let displayVersionKey = "launcher.display.version"
     private let defaults: UserDefaults
     private let applicationScanner = LauncherFileScanner()
@@ -463,6 +498,7 @@ struct RootGridMetrics: Equatable, Sendable {
             }
             self.removeMissingApplicationsFromOpenState()
             self.bootstrapDefaultGroupsIfNeeded()
+            self.reconcileSequoiaUtilitiesIfNeeded()
             self.syncNewGames()
             self.preloadInitialPageIconsIfNeeded()
         }
@@ -1086,7 +1122,9 @@ struct RootGridMetrics: Equatable, Sendable {
     private func bootstrapDefaultGroupsIfNeeded() {
         guard !defaults.bool(forKey: defaultsKey) else { return }
         let alreadyGrouped = Set(groups.flatMap(\.appPaths))
-        let utilities = apps.filter { $0.url.path.contains("/Utilities/") && !alreadyGrouped.contains($0.url.path) }
+        let utilities = apps.filter {
+            LaunchpadStandardUtilities.contains($0) && !alreadyGrouped.contains($0.url.path)
+        }
         let games = apps.filter { $0.category == "public.app-category.games" && !alreadyGrouped.contains($0.url.path) }
         if !utilities.isEmpty {
             groups.append(AppGroup(
@@ -1103,6 +1141,28 @@ struct RootGridMetrics: Equatable, Sendable {
             ))
         }
         defaults.set(true, forKey: defaultsKey)
+        defaults.set(true, forKey: sequoiaUtilitiesMigrationKey)
+    }
+
+    func reconcileSequoiaUtilitiesIfNeeded() {
+        guard !defaults.bool(forKey: sequoiaUtilitiesMigrationKey) else { return }
+        defer { defaults.set(true, forKey: sequoiaUtilitiesMigrationKey) }
+
+        let grouped = Set(groups.flatMap(\.appPaths))
+        let newPaths = apps.filter(LaunchpadStandardUtilities.contains).map(\.url.path).filter {
+            !grouped.contains($0)
+        }
+        guard !newPaths.isEmpty else { return }
+
+        if let index = groups.firstIndex(where: { $0.systemKind == "utilities" }) {
+            groups[index].appPaths.append(contentsOf: newPaths)
+        } else {
+            groups.append(AppGroup(
+                name: text("Utilities", "ユーティリティ", "工具程式"),
+                appPaths: newPaths,
+                systemKind: "utilities"
+            ))
+        }
     }
     private func syncNewGames() {
         let gamePaths = apps.filter { $0.category == "public.app-category.games" }.map(\.url.path)
