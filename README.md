@@ -6,9 +6,9 @@
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://support.apple.com/macos)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Bring back the classic full-screen Launchpad removed in macOS 26 Tahoe.**
+**A free, open-source alternative to macOS Launchpad.**
 
-Free, open source, and built natively with SwiftUI—with folders, instant search, smooth paging, wallpapers, and automatic app discovery.
+Launch, find, and organize every app from a familiar full-screen grid—complete with folders, instant search, smooth paging, customizable wallpapers, and automatic app discovery.
 
 [Official website](https://hamzimer.github.io/launchpad-classic-macos/) · [Download for macOS](https://github.com/Hamzimer/launchpad-classic-macos/releases/latest) · [Watch the demo](#demo) · [Features](#highlights) · [Screenshots](#screenshots) · [Installation](#install)
 
@@ -25,7 +25,7 @@ Click the animation for the higher-quality MP4. If Launchpad Classic restores a 
 
 ## Introduction
 
-Launchpad Classic is a native macOS application launcher for people who want the familiar, direct experience of the classic Launchpad on newer macOS releases. Open it to see every installed application in a clean full-screen grid over your Desktop wallpaper, then launch an app with one click. There is no account, cloud service, analytics system, advertising, or telemetry: application discovery, organization, search, and preferences all remain on your Mac.
+Launchpad Classic is a free, open-source alternative to macOS Launchpad for anyone who misses its familiar, direct way of finding apps. Open it to see every installed application in a clean full-screen grid over your Desktop wallpaper, then launch any app with one click. There is no account, cloud service, advertising, analytics, or telemetry: discovery, organization, search, and preferences all stay on your Mac.
 
 The launcher automatically scans the standard macOS application locations and watches them for changes. Newly installed apps appear without a manual refresh, removed apps disappear automatically, and the number of pages adapts to the size of the library. Pages can be changed with a mouse drag, scroll wheel, trackpad gesture, or the page indicators at the bottom of the screen. The search field filters the library immediately, while its adjacent popover contains display, background, language, update, and quit controls without relying on a separate Settings window or the macOS menu bar.
 
@@ -123,11 +123,11 @@ Released under the [MIT License](LICENSE).
 
 ## 日本語
 
-Launchpad Classicは、従来のmacOS Launchpadに近い操作感を、現在のmacOSで再現するSwiftUI製アプリケーションランチャーです。
+Launchpad Classicは、macOS Launchpadに代わる無料・オープンソースのアプリケーションランチャーです。使い慣れた全画面表示と直感的な操作を、現在のmacOSで再現します。
 
 ### はじめに
 
-Launchpad Classicは、従来のLaunchpadが持っていた「開けばすぐにすべてのアプリが見つかる」という分かりやすさを、現在のmacOSで利用するためのネイティブアプリです。起動するとDesktopの壁紙を背景に、インストール済みアプリを全画面のグリッドで表示します。アカウント登録、クラウドサービス、解析、広告、テレメトリーは使用せず、アプリの検出、検索、並べ替え、設定の保存はすべてMac内で完結します。
+Launchpad Classicは、「開けばすぐに、使いたいアプリが見つかる」というLaunchpadの良さを取り戻すための無料アプリです。起動すると、Desktopの壁紙を背景にインストール済みアプリを見やすい全画面グリッドで表示し、ワンクリックで起動できます。アカウント登録、クラウドサービス、広告、解析、テレメトリーは使用せず、アプリの検出、検索、整理、設定の保存はすべてMac内で完結します。
 
 標準のアプリケーションフォルダーを自動監視するため、新しいアプリをインストールすると手動更新なしで一覧に加わり、削除されたアプリも自動的に取り除かれます。アプリ数に応じてページ数が増減し、マウスで左右にドラッグする操作、ホイール、トラックパッド、画面下部のページドットで滑らかに移動できます。検索欄では入力と同時にアプリを絞り込み、その横のポップオーバーから表示、背景、言語、アップデート、終了を操作できます。独立した設定画面やmacOSメニューバーには依存しません。
 
@@ -182,11 +182,11 @@ cd launchpad-classic-macos
 
 ## 繁體中文
 
-Launchpad Classic 是一款以 SwiftUI 製作的原生 macOS 應用程式啟動器，讓新版 macOS 也能保有經典 Launchpad 熟悉、直覺的操作體驗。
+Launchpad Classic 是一款免費、開放原始碼的 macOS Launchpad 替代方案，讓現代 macOS 也能擁有熟悉、直覺的全螢幕應用程式啟動體驗。
 
 ### 介紹
 
-Launchpad Classic 專為希望「開啟後立即看見所有應用程式」的使用者而設計。啟動後，它會以桌面背景顯示全螢幕應用程式網格，只要按一下圖示即可開啟應用程式。不需要註冊帳號，也不依賴雲端服務、分析工具、廣告或遙測；應用程式偵測、搜尋、排列和偏好設定都只在您的 Mac 上處理。
+Launchpad Classic 讓你一開啟就能看見所有應用程式，快速找到想用的工具。它會在桌布上顯示整齊的全螢幕應用程式網格，按一下圖示即可啟動。完全不需要註冊帳號，也不依賴雲端服務、廣告、分析工具或遙測；應用程式偵測、搜尋、整理與偏好設定都只在你的 Mac 上處理。
 
 啟動器會自動掃描並監控 macOS 的標準應用程式檔案夾。安裝新應用程式後，不必手動更新便會自動顯示；移除應用程式後，也會自動從清單中消失。頁數會依應用程式數量自動調整，並可使用滑鼠左右拖移、滾輪、觸控式軌跡板手勢或畫面底部的頁面指示點切換。搜尋欄會在輸入時立即篩選應用程式，旁邊的彈出式選單可調整顯示、背景、語言、更新及結束；不再使用獨立設定視窗或 macOS 選單列。
 
