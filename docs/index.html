@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Launchpad Classic — The classic macOS app launcher, restored</title>
+  <meta name="description" content="Bring back the classic full-screen Launchpad on macOS. Free, open source, native SwiftUI, with folders, search, smooth paging, wallpapers, and automatic app discovery.">
+  <meta name="theme-color" content="#0a1224">
+  <link rel="canonical" href="https://hamzimer.github.io/launchpad-classic-macos/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Launchpad Classic for macOS">
+  <meta property="og:description" content="The familiar full-screen Launchpad experience, rebuilt for modern macOS.">
+  <meta property="og:url" content="https://hamzimer.github.io/launchpad-classic-macos/">
+  <meta property="og:image" content="https://hamzimer.github.io/launchpad-classic-macos/assets/launchpad-classic-app-grid.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Launchpad Classic",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "macOS 14 or later",
+    "softwareVersion": "3.14.0",
+    "description": "A free, open-source replacement for the classic full-screen macOS Launchpad.",
+    "downloadUrl": "https://github.com/Hamzimer/launchpad-classic-macos/releases/latest",
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Launchpad Classic home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span>Launchpad Classic</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary navigation">
+      <a href="#features" data-i18n="navFeatures">Features</a>
+      <a href="#install" data-i18n="navInstall">Install</a>
+      <a href="#privacy" data-i18n="navPrivacy">Privacy</a>
+      <div class="language-switcher" role="group" aria-label="Language">
+        <button type="button" data-language="en" aria-pressed="true">EN</button>
+        <button type="button" data-language="ja" aria-pressed="false">日本語</button>
+        <button type="button" data-language="zh-Hant" aria-pressed="false">繁中</button>
+      </div>
+      <a class="nav-star" href="https://github.com/Hamzimer/launchpad-classic-macos" target="_blank" rel="noreferrer" data-i18n="star">☆ Star on GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-copy">
+        <p class="eyebrow" data-i18n="eyebrow">Native SwiftUI · Free &amp; open source</p>
+        <h1><span class="hero-line" data-i18n="heroTitle">The Launchpad you remember.</span><br><span data-i18n="heroAccent">Back on your Mac.</span></h1>
+        <p class="hero-lead" data-i18n="heroLead">Bring back the familiar full-screen app launcher with folders, instant search, smooth paging, wallpapers, and automatic app discovery.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/Hamzimer/launchpad-classic-macos/releases/latest" data-i18n="download">Download for macOS</a>
+          <a class="button button-secondary" href="#demo" data-i18n="watchDemo">Watch 24-sec demo</a>
+        </div>
+        <div class="trust-row" aria-label="Project details">
+          <span>macOS 14–26</span><span data-i18n="universal">Apple silicon + Intel</span><span data-i18n="mit">MIT licensed</span>
+        </div>
+      </div>
+      <div class="hero-visual" id="demo">
+        <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span><b>Launchpad Classic</b></div>
+        <video muted loop playsinline controls preload="metadata" poster="assets/launchpad-classic-app-grid.jpg" aria-label="Launchpad Classic demonstration">
+          <source src="assets/launchpad-classic-demo.mp4" type="video/mp4">
+        </video>
+      </div>
+    </section>
+
+    <section class="reason section-shell" aria-labelledby="reason-title">
+      <p class="section-kicker" data-i18n="reasonKicker">A missing Mac workflow, restored</p>
+      <h2 id="reason-title" data-i18n="reasonTitle">Everything you need. Nothing between you and your apps.</h2>
+      <p class="section-intro" data-i18n="reasonBody">Launchpad Classic brings back a direct, visual way to find and organize every app—without an account, cloud service, analytics, or subscription.</p>
+      <div class="signal-row">
+        <article><strong data-i18n="signalOneTitle">One click</strong><span data-i18n="signalOneBody">to open any app</span></article>
+        <article><strong data-i18n="signalTwoTitle">Automatic</strong><span data-i18n="signalTwoBody">new-app discovery</span></article>
+        <article><strong data-i18n="signalThreeTitle">100% local</strong><span data-i18n="signalThreeBody">organization and search</span></article>
+      </div>
+    </section>
+
+    <section class="features section-shell" id="features" aria-labelledby="features-title">
+      <p class="section-kicker" data-i18n="featuresKicker">Designed for muscle memory</p>
+      <h2 id="features-title" data-i18n="featuresTitle">Familiar where it matters. Better where it counts.</h2>
+      <div class="feature-grid">
+        <article class="feature-card feature-wide">
+          <span class="feature-icon" aria-hidden="true">⊞</span>
+          <h3 data-i18n="featureFoldersTitle">Folders that work like Launchpad</h3>
+          <p data-i18n="featureFoldersBody">Drag one app onto another to create a folder. Rename it, rearrange its contents, or drag apps back out.</p>
+          <div class="folder-demo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">⌕</span>
+          <h3 data-i18n="featureSearchTitle">Instant search</h3>
+          <p data-i18n="featureSearchBody">Type a few letters and the full app library filters immediately.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">↔</span>
+          <h3 data-i18n="featurePagingTitle">Smooth paging</h3>
+          <p data-i18n="featurePagingBody">Drag, scroll, swipe, or use page dots with responsive native animation.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">◎</span>
+          <h3 data-i18n="featureDiscoveryTitle">Automatic discovery</h3>
+          <p data-i18n="featureDiscoveryBody">Newly installed apps appear automatically. Removed apps disappear without a manual refresh.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">▧</span>
+          <h3 data-i18n="featureUtilitiesTitle">Utilities, already organized</h3>
+          <p data-i18n="featureUtilitiesBody">Standard macOS utilities are collected into a familiar Utilities folder while your folders stay untouched.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">◐</span>
+          <h3 data-i18n="featureWallpaperTitle">Your wallpaper, your way</h3>
+          <p data-i18n="featureWallpaperBody">Use your Desktop, macOS wallpapers, or built-in backgrounds with adjustable icon sizes.</p>
+        </article>
+        <article class="feature-card">
+          <span class="feature-icon" aria-hidden="true">A</span>
+          <h3 data-i18n="featureLanguageTitle">Three languages</h3>
+          <p data-i18n="featureLanguageBody">English, Japanese, Traditional Chinese, and automatic system-language selection.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="showcase section-shell" aria-labelledby="showcase-title">
+      <div class="showcase-copy">
+        <p class="section-kicker" data-i18n="showcaseKicker">Controls where you need them</p>
+        <h2 id="showcase-title" data-i18n="showcaseTitle">A clean launcher—not another settings app.</h2>
+        <p data-i18n="showcaseBody">Display size, background, language, updates, and quit controls sit beside search. The rest of the screen stays focused on your apps.</p>
+        <ul>
+          <li data-i18n="showcaseOne">Retina-quality icons and memory-conscious caching</li>
+          <li data-i18n="showcaseTwo">Liquid Glass controls on macOS 26</li>
+          <li data-i18n="showcaseThree">VoiceOver and Reduce Motion support</li>
+        </ul>
+      </div>
+      <figure class="screenshot-frame">
+        <img src="assets/launchpad-classic-settings.jpg" alt="Launchpad Classic settings popover beside the search field" loading="lazy" data-i18n-alt="settingsAlt">
+      </figure>
+    </section>
+
+    <section class="privacy section-shell" id="privacy" aria-labelledby="privacy-title">
+      <div class="privacy-mark" aria-hidden="true">✓</div>
+      <div>
+        <p class="section-kicker" data-i18n="privacyKicker">Private by design</p>
+        <h2 id="privacy-title" data-i18n="privacyTitle">Your app library stays on your Mac.</h2>
+        <p data-i18n="privacyBody">No analytics. No advertising. No account. No telemetry. Launchpad Classic only scans local application folders and connects to the official GitHub release feed for secure update checks.</p>
+      </div>
+    </section>
+
+    <section class="install section-shell" id="install" aria-labelledby="install-title">
+      <div class="install-heading">
+        <p class="section-kicker" data-i18n="installKicker">Ready in a minute</p>
+        <h2 id="install-title" data-i18n="installTitle">Download. Install. Launch.</h2>
+        <p data-i18n="installLead">Free forever, with a Universal 2 build for Apple silicon and Intel Macs.</p>
+      </div>
+      <ol class="install-steps">
+        <li><span>1</span><div><h3 data-i18n="stepOneTitle">Download the installer</h3><p data-i18n="stepOneBody">Get the latest PKG from GitHub Releases.</p></div></li>
+        <li><span>2</span><div><h3 data-i18n="stepTwoTitle">Open the PKG</h3><p data-i18n="stepTwoBody">Quit any older version, then follow the macOS installer.</p></div></li>
+        <li><span>3</span><div><h3 data-i18n="stepThreeTitle">Keep your organization</h3><p data-i18n="stepThreeBody">Future installs replace the app while preserving your folders and preferences.</p></div></li>
+      </ol>
+      <div class="install-actions">
+        <a class="button button-primary" href="https://github.com/Hamzimer/launchpad-classic-macos/releases/latest" data-i18n="getLatest">Get Launchpad Classic 3.14.0</a>
+        <a class="text-link" href="https://github.com/Hamzimer/launchpad-classic-macos#install" data-i18n="readGuide">Read the installation guide →</a>
+      </div>
+      <p class="gatekeeper-note" data-i18n="gatekeeper">The current community build is locally signed but not Apple-notarized. If macOS blocks the first launch, Control-click the app in Finder, choose Open, and confirm once.</p>
+    </section>
+
+    <section class="faq section-shell" aria-labelledby="faq-title">
+      <p class="section-kicker" data-i18n="faqKicker">Good to know</p>
+      <h2 id="faq-title" data-i18n="faqTitle">Frequently asked questions</h2>
+      <div class="faq-list">
+        <details><summary data-i18n="faqAppleQuestion">Is this an Apple application?</summary><p data-i18n="faqAppleAnswer">No. Launchpad Classic is an independent open-source project and is not affiliated with or endorsed by Apple Inc.</p></details>
+        <details><summary data-i18n="faqUpdatesQuestion">How do updates work?</summary><p data-i18n="faqUpdatesAnswer">The app checks the official GitHub feed. Sparkle verifies the update signature before downloading and installing a new version.</p></details>
+        <details><summary data-i18n="faqDataQuestion">Does it collect any personal data?</summary><p data-i18n="faqDataAnswer">No. Organization, search, and preferences remain local. There are no analytics, ads, accounts, or telemetry.</p></details>
+        <details><summary data-i18n="faqSystemQuestion">Which Macs are supported?</summary><p data-i18n="faqSystemAnswer">macOS 14 Sonoma or later, on both Apple silicon and Intel Macs.</p></details>
+      </div>
+    </section>
+
+    <section class="final-cta section-shell">
+      <div>
+        <p class="section-kicker" data-i18n="ctaKicker">Make your Mac feel familiar again</p>
+        <h2 data-i18n="ctaTitle">Bring back Launchpad today.</h2>
+      </div>
+      <div class="cta-actions">
+        <a class="button button-primary" href="https://github.com/Hamzimer/launchpad-classic-macos/releases/latest" data-i18n="downloadFree">Download free</a>
+        <a class="button button-secondary" href="https://github.com/Hamzimer/launchpad-classic-macos" target="_blank" rel="noreferrer" data-i18n="starHelpful">☆ Star if it helps</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer section-shell">
+    <div><strong>Launchpad Classic</strong><p data-i18n="footerTagline">The classic macOS launcher, thoughtfully restored.</p></div>
+    <nav aria-label="Footer navigation">
+      <a href="https://github.com/Hamzimer/launchpad-classic-macos/releases/latest" data-i18n="footerReleases">Releases</a>
+      <a href="https://github.com/Hamzimer/launchpad-classic-macos/issues" data-i18n="footerIssues">Issues</a>
+      <a href="https://github.com/Hamzimer/launchpad-classic-macos/blob/main/ROADMAP.md" data-i18n="footerRoadmap">Roadmap</a>
+      <a href="https://github.com/Hamzimer/launchpad-classic-macos/blob/main/SECURITY.md" data-i18n="footerSecurity">Security</a>
+      <a href="https://github.com/Hamzimer/launchpad-classic-macos#privacy" data-i18n="navPrivacy">Privacy</a>
+    </nav>
+    <p class="legal" data-i18n="legal">Independent open-source software. Apple, macOS, and Launchpad are trademarks of Apple Inc.</p>
+  </footer>
+  <script src="script.js" defer></script>
+</body>
+</html>

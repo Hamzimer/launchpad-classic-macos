@@ -10,7 +10,7 @@
 
 Free, open source, and built natively with SwiftUI—with folders, instant search, smooth paging, wallpapers, and automatic app discovery.
 
-[Download for macOS](https://github.com/Hamzimer/launchpad-classic-macos/releases/latest) · [Watch the demo](#demo) · [Features](#highlights) · [Screenshots](#screenshots) · [Installation](#install)
+[Official website](https://hamzimer.github.io/launchpad-classic-macos/) · [Download for macOS](https://github.com/Hamzimer/launchpad-classic-macos/releases/latest) · [Watch the demo](#demo) · [Features](#highlights) · [Screenshots](#screenshots) · [Installation](#install)
 
 [日本語](#日本語) | [繁體中文](#繁體中文)
 
